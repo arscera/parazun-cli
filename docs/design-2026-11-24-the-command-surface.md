@@ -29,18 +29,18 @@ the parameter of the API.
 The published specification of the API is
 `https://api.parazun.com/openapi.json`. It holds 22 paths.
 
-**17 of them are live.** Four are retired (`/most-gifted/by-category`,
+**16 of them are live.** Five are retired (`/most-gifted/by-category`,
 `/most-gifted/by-department`, `/most-wished-for/by-category`,
-`/most-wished-for/by-department`) and one is deprecated (`/bestseller`, in
-favour of `/bestseller/by-category`).
+`/most-wished-for/by-department` and `/movers-and-shakers/by-department`)
+and one is deprecated (`/bestseller`, in favour of `/bestseller/by-category`).
 
 **THE RETIRED AND THE DEPRECATED PATHS GET NO COMMAND.** A command for a
 path that the API no longer serves is a command that fails, and a customer
 that learns it will remember the failure and not the API.
 
 Every live operation is a GET with query parameters. No operation takes a
-body. The `region` parameter is on every operation but the two that are
-scoped to the tree of a category, and its default is `US`. The `page`
+body. The `region` parameter is on every live operation but the one that
+is scoped to the tree of a category, and its default is `US`. The `page`
 parameter is on the six operations that answer a list.
 
 ## The command surface
@@ -51,7 +51,7 @@ parameter is on the six operations that answer a list.
 | `parazun product offers <ASIN>` | `/product/offers` | `--region`, `--zip-code`, `--page` |
 | `parazun product reviews <ASIN>` | `/product/reviews` | `--region`, `--sort-by`, `--reviewer-type`, `--format-type`, `--media-type`, `--page`, `--filter-by-keyword` |
 | `parazun product related <ASIN>` | `/product/related-asins` | `--region` |
-| `parazun product summaries <ASIN>...` | `/product/summaries` | `--region`, `--format`, `--page`, `--all / --no-all` |
+| `parazun product summaries <ASIN>...` | `/product/summaries` | `--region`, `--format`, `--page`, `--all` |
 | `parazun search <KEYWORD>` | `/search` | `--region`, `--search-alias`, `--node-id`, `--page` |
 | `parazun search aliases` | `/search/aliases` | `--region` |
 | `parazun category` | `/category` | `--region`, `--parent-id`, `--page`, `--size` |
@@ -111,10 +111,12 @@ is no longer functional, so the CLI has no option for it. The same rule
 holds for the retired paths: an option that the API no longer serves is an
 option that fails.
 
-**`--region` IS ON EVERY COMMAND THAT TAKES IT**, and its default is the
-value of `PARAZUN_REGION` of the environment, or `US` when the
-environment is silent. A customer of another marketplace sets the value
-once, and the default of the API is `US`.
+**`--region` IS ON EVERY COMMAND THAT TAKES IT**, and its value is the value
+of the caller, or the value of `PARAZUN_REGION` of the environment, or
+nothing at all. **ONLY THE COMMAND OF AN OPERATION THAT HAS A MARKETPLACE
+CARRIES THE OPTION**, so the marketplace is sent only to the operations of
+the API that take one: `/category/descendants` has none, and a marketplace
+that the API does not have is a parameter the API ignores or refuses.
 
 **`parazun request` STAYS.** It is the escape hatch: an operation of the
 API that has no command yet is reachable on the day it ships, and a caller
@@ -152,13 +154,24 @@ CLI holds no copy of any of them.
 | --- | --- |
 | stdout | the body of the API, exactly as the API answered it |
 | stderr | one line: the status and the rate limit headers the API sent |
-| the exit code | 0 when the API answered 2xx, 1 when it refused |
+| the exit code | 0 when the API answered 2xx, 1 for every other answer |
 
 **THE BODY GOES TO STDOUT AND NOTHING ELSE DOES.** The CLI exists for the
 agents of the customers, and an agent reads stdout. A body with a header
 line in front of it is not JSON, and a caller that pipes the answer into
 `jq` gets nothing. The status and the rate limit go to stderr, so a person
 sees them and a pipe does not.
+
+**AN ANSWER THAT IS NOT A 2xx IS A REFUSAL**, and its body goes to stderr
+with the exit code 1. A 3xx is not an answer the CLI can use, so it is
+handled as a refusal.
+
+**A PARAMETER WHOSE VALUE IS AN ENUMERATION OF THE API TAKES THE VALUE OF
+THE API.** The parameter `all` of the product summaries is the enumeration
+`["1", "0"]`, so the option takes `1` or `0`. A flag of the CLI would send
+`true` and `false`, and the API takes neither of them. The CLI holds no
+copy of the meaning of an enumeration of the API, so it holds no copy of
+the enumeration either.
 
 **THE STATUS LINE IS ONE LINE.** It names the status and every rate limit
 header the answer carried:

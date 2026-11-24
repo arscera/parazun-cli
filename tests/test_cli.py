@@ -372,6 +372,17 @@ def test_the_search_command_asks_for_the_results_of_the_words(monkeypatch):
     assert seen["params"] == {"keywords": "coffee grinder"}
 
 
+def test_the_search_command_takes_the_words_one_by_one(monkeypatch):
+    """The words of a search are one argument or several.
+
+    The design names `parazun search coffee grinder`, so the command has to
+    take the words without the shell quoting them.
+    """
+    result, seen = _run(monkeypatch, ["search", "coffee", "grinder"])
+    assert result.exit_code == 0
+    assert seen["params"] == {"keywords": "coffee grinder"}
+
+
 def test_the_search_aliases_command_asks_for_the_indexes(monkeypatch):
     """The aliases of the search are a command under the search."""
     result, seen = _run(monkeypatch, ["search", "aliases"])
@@ -467,6 +478,25 @@ def test_the_cli_sends_only_the_parameters_that_the_caller_gave(monkeypatch):
     assert "region" not in seen["params"]
 
 
+def test_the_descendants_command_sends_no_marketplace(monkeypatch):
+    """The operation of the API has no marketplace, so none is sent.
+
+    The marketplace of the environment must not reach an operation that
+    does not have one.
+    """
+    monkeypatch.setenv("PARAZUN_REGION", "DE")
+    result, seen = _run(monkeypatch, ["category", "descendants", "1055398"])
+    assert result.exit_code == 0
+    assert "region" not in seen["params"]
+
+
+def test_a_three_hundred_is_not_an_answer_the_cli_accepts(monkeypatch):
+    """The exit code is 0 for a 2xx and 1 for every other answer."""
+    result, seen = _run(monkeypatch, ["product", "B00FLYWNYQ"], status=302)
+    assert result.exit_code == 1
+    assert result.stdout.strip() == ""
+
+
 def test_the_marketplace_comes_from_the_environment(monkeypatch):
     """The environment names the marketplace of the answer."""
     monkeypatch.setenv("PARAZUN_REGION", "DE")
@@ -483,13 +513,17 @@ def test_the_marketplace_of_the_caller_wins_over_the_environment(monkeypatch):
     assert seen["params"] == {"asin": "B00FLYWNYQ", "region": "JP"}
 
 
-def test_the_summaries_command_can_ask_for_one_page(monkeypatch):
-    """The flag of the API has both of its values in the CLI."""
+def test_the_summaries_command_takes_the_value_of_the_api(monkeypatch):
+    """The enumeration of the API is 1 and 0, so the option takes a value.
+
+    A flag of the CLI would send "true" and "false", and the API takes
+    neither of them.
+    """
     result, seen = _run(
-        monkeypatch, ["product", "summaries", "B00FLYWNYQ", "--no-all"]
+        monkeypatch, ["product", "summaries", "B00FLYWNYQ", "--all", "0"]
     )
     assert result.exit_code == 0
-    assert seen["params"] == {"asins": "B00FLYWNYQ", "all": "false"}
+    assert seen["params"] == {"asins": "B00FLYWNYQ", "all": "0"}
 
 
 def test_a_refusal_goes_to_stderr_and_the_exit_code_is_one(monkeypatch):

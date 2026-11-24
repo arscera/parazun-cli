@@ -74,23 +74,49 @@ def _option(help_text):
     return typer.Option(None, help=help_text)
 
 
+def _region_callback(value):
+    """The marketplace of the answer: the value of the caller, or the environment.
+
+    The value is None when the caller gave nothing and the environment is
+    silent, and then the command sends no marketplace and the default of
+    the API applies.
+    """
+    return value if value is not None else config.region()
+
+
+def region_option():
+    """The option of the marketplace.
+
+    Only the command of an operation that HAS a marketplace carries this
+    option, so the marketplace is sent only to the operations of the API
+    that take one.
+    """
+    return typer.Option(
+        None,
+        "--region",
+        callback=_region_callback,
+        help=(
+            "The marketplace of the answer. The default is the default of "
+            "the API, or the value of PARAZUN_REGION."
+        ),
+    )
+
+
 def _query(region=None, **values):
     """The query of the request.
 
     Only the parameters that the caller gave are sent, so the default of
-    the API applies to the rest. The marketplace is the one parameter that
-    the environment can name, with the value of PARAZUN_REGION.
+    the API applies to the rest.
     """
     query = {name: value for name, value in values.items() if value is not None}
-    marketplace = region if region is not None else config.region()
-    if marketplace is not None:
-        query["region"] = marketplace
+    if region is not None:
+        query["region"] = region
     return query
 
 
 def _status_line(answer):
     """One line that names the status and the rate limit of the answer."""
-    line = "HTTP %d" % answer.status_code
+    line = "HTTP %d |" % answer.status_code
     for name in sorted(answer.headers):
         line += " %s=%s" % (name, answer.headers[name])
     return line
@@ -104,12 +130,13 @@ def _emit(answer):
     run with the exit code 1.
     """
     line = _status_line(answer)
-    if answer.status_code >= 400:
-        typer.echo(answer.body, err=True)
+    if 200 <= answer.status_code < 300:
+        typer.echo(answer.body)
         typer.echo(line, err=True)
-        raise typer.Exit(code=1)
-    typer.echo(answer.body)
+        return
+    typer.echo(answer.body, err=True)
     typer.echo(line, err=True)
+    raise typer.Exit(code=1)
 
 
 def _fail(message):
@@ -136,7 +163,15 @@ def _api_client():
 
 def _call(path, params=None, method="GET", data=None):
     """Send one request to the API and print the answer."""
-    answer = _api_client().request(method, path, params=params or None, data=data)
+    api = _api_client()
+    try:
+        answer = api.request(method, path, params=params or None, data=data)
+    except client.ApiError as error:
+        _fail(str(error))
+        return
+    except Exception as error:  # noqa: BLE001 - the message reaches the caller
+        _fail("The request failed: %s" % error)
+        return
     _emit(answer)
 
 
@@ -156,7 +191,7 @@ def product_get(
     asin: str = typer.Argument(
         ..., metavar="ASIN", help="The ASIN of the product."
     ),
-    region: str = _option("The marketplace of the answer."),
+    region: str = region_option(),
 ):
     """Return the product of an ASIN."""
     _call("/product", _query(region=region, asin=asin))
@@ -167,9 +202,11 @@ def product_offers(
     asin: str = typer.Argument(
         ..., metavar="ASIN", help="The ASIN of the product."
     ),
-    region: str = _option("The marketplace of the answer."),
+    region: str = region_option(),
     zip_code: str = _option("The postal code of the delivery address."),
-    page: int = _option("The page of the answer."),
+    page: int = _option(
+        "The page of the answer. The default is the default of the API."
+    ),
 ):
     """Return the offers of a product."""
     _call(
@@ -183,12 +220,22 @@ def product_reviews(
     asin: str = typer.Argument(
         ..., metavar="ASIN", help="The ASIN of the product."
     ),
-    region: str = _option("The marketplace of the answer."),
-    sort_by: str = _option("The sort of the reviews: helpful or recent."),
-    reviewer_type: str = _option("The reviews of all the reviewers, or of the buyers."),
-    format_type: str = _option("The formats of the reviews."),
-    media_type: str = _option("The contents of the reviews."),
-    page: int = _option("The page of the answer."),
+    region: str = region_option(),
+    sort_by: str = _option(
+        "The sort of the reviews: helpful or recent. The default is the default of the API."
+    ),
+    reviewer_type: str = _option(
+        "The reviews of all the reviewers, or of the buyers. The default is the default of the API."
+    ),
+    format_type: str = _option(
+        "The formats of the reviews. The default is the default of the API."
+    ),
+    media_type: str = _option(
+        "The contents of the reviews. The default is the default of the API."
+    ),
+    page: int = _option(
+        "The page of the answer. The default is the default of the API."
+    ),
     filter_by_keyword: str = _option("A word that the reviews must carry."),
 ):
     """Return the reviews of a product."""
@@ -212,7 +259,7 @@ def product_related(
     asin: str = typer.Argument(
         ..., metavar="ASIN", help="The ASIN of the product."
     ),
-    region: str = _option("The marketplace of the answer."),
+    region: str = region_option(),
 ):
     """Return the ASINs of the products that are related to a product."""
     _call("/product/related-asins", _query(region=region, asin=asin))
@@ -223,13 +270,20 @@ def product_summaries(
     asins: list[str] = typer.Argument(
         ..., metavar="ASIN", help="The ASINs of the products."
     ),
-    region: str = _option("The marketplace of the answer."),
-    format: str = _option("The format of the answer: json or csv."),
-    page: int = _option("The page of the answer."),
-    all: bool = typer.Option(
+    region: str = region_option(),
+    format: str = _option(
+        "The format of the answer: json or csv. The default is the default of the API."
+    ),
+    page: int = _option(
+        "The page of the answer. The default is the default of the API."
+    ),
+    all: str = typer.Option(
         None,
-        "--all/--no-all",
-        help="Every page of the answer, or the page of the --page option.",
+        "--all",
+        help=(
+            "Every page of the answer: 1 or 0. The default is the default "
+            "of the API."
+        ),
     ),
 ):
     """Return the summaries of a list of products."""
@@ -258,20 +312,28 @@ app.add_typer(search_app, name="search")
 
 @search_app.command(DEFAULT_OPERATION, hidden=True)
 def search_get(
-    keywords: str = typer.Argument(
+    keywords: list[str] = typer.Argument(
         ..., metavar="KEYWORD", help="The words of the search."
     ),
-    region: str = _option("The marketplace of the answer."),
-    search_alias: str = _option("The index of the search: aps and the others."),
+    region: str = region_option(),
+    search_alias: str = _option(
+        "The index of the search: aps and the others. The default is the default of the API."
+    ),
     node_id: str = _option("The node of the category of the search."),
-    page: int = _option("The page of the answer."),
+    page: int = _option(
+        "The page of the answer. The default is the default of the API."
+    ),
 ):
-    """Return the results of a search."""
+    """Return the results of a search.
+
+    The words are one argument or several, and the words of the API hold
+    them separated by a space.
+    """
     _call(
         "/search",
         _query(
             region=region,
-            keywords=keywords,
+            keywords=" ".join(keywords),
             search_alias=search_alias,
             node_id=node_id,
             page=page,
@@ -281,7 +343,7 @@ def search_get(
 
 @search_app.command("aliases")
 def search_aliases(
-    region: str = _option("The marketplace of the answer."),
+    region: str = region_option(),
 ):
     """Return the indexes that a search can use."""
     _call("/search/aliases", _query(region=region))
@@ -300,10 +362,14 @@ app.add_typer(category_app, name="category")
 
 @category_app.command(DEFAULT_OPERATION, hidden=True)
 def category_get(
-    region: str = _option("The marketplace of the answer."),
+    region: str = region_option(),
     parent_id: int = _option("The node of the parent of the categories."),
-    page: int = _option("The page of the answer."),
-    size: int = _option("The count of the categories of the answer."),
+    page: int = _option(
+        "The page of the answer. The default is the default of the API."
+    ),
+    size: int = _option(
+        "The count of the categories of the answer. The default is the default of the API."
+    ),
 ):
     """Return the categories of a marketplace."""
     _call(
@@ -339,7 +405,7 @@ def bestseller_by_category(
     node_id: int = typer.Argument(
         ..., metavar="NODE_ID", help="The node of the category."
     ),
-    region: str = _option("The marketplace of the answer."),
+    region: str = region_option(),
 ):
     """Return the best sellers of a category."""
     _call("/bestseller/by-category", _query(region=region, node_id=node_id))
@@ -350,7 +416,7 @@ def bestseller_by_department(
     alias: str = typer.Argument(
         ..., metavar="ALIAS", help="The alias of the department."
     ),
-    region: str = _option("The marketplace of the answer."),
+    region: str = region_option(),
 ):
     """Return the best sellers of a department."""
     _call("/bestseller/by-department", _query(region=region, alias=alias))
@@ -369,7 +435,7 @@ def new_releases_by_category(
     node_id: int = typer.Argument(
         ..., metavar="NODE_ID", help="The node of the category."
     ),
-    region: str = _option("The marketplace of the answer."),
+    region: str = region_option(),
 ):
     """Return the new releases of a category."""
     _call("/new-releases/by-category", _query(region=region, node_id=node_id))
@@ -380,7 +446,7 @@ def new_releases_by_department(
     alias: str = typer.Argument(
         ..., metavar="ALIAS", help="The alias of the department."
     ),
-    region: str = _option("The marketplace of the answer."),
+    region: str = region_option(),
 ):
     """Return the new releases of a department."""
     _call("/new-releases/by-department", _query(region=region, alias=alias))
@@ -391,7 +457,7 @@ def new_releases_by_department(
 
 @app.command("departments")
 def departments(
-    region: str = _option("The marketplace of the answer."),
+    region: str = region_option(),
 ):
     """Return the departments of a marketplace."""
     _call("/departments", _query(region=region))
@@ -399,8 +465,10 @@ def departments(
 
 @app.command("deals")
 def deals(
-    region: str = _option("The marketplace of the answer."),
-    page: int = _option("The page of the answer."),
+    region: str = region_option(),
+    page: int = _option(
+        "The page of the answer. The default is the default of the API."
+    ),
 ):
     """Return the deals of today."""
     _call("/deals", _query(region=region, page=page))
@@ -411,11 +479,23 @@ def seller(
     seller_id: str = typer.Argument(
         ..., metavar="SELLER_ID", help="The id of the seller."
     ),
-    region: str = _option("The marketplace of the answer."),
-    include_products: bool = _option("The products of the seller."),
-    include_feedback: bool = _option("The feedback of the seller."),
-    products_limit: int = _option("The count of the products of the answer."),
-    feedback_limit: int = _option("The count of the feedback of the answer."),
+    region: str = region_option(),
+    include_products: bool = typer.Option(
+        None,
+        "--include-products",
+        help="The products of the seller. The default is the default of the API.",
+    ),
+    include_feedback: bool = typer.Option(
+        None,
+        "--include-feedback",
+        help="The feedback of the seller. The default is the default of the API.",
+    ),
+    products_limit: int = _option(
+        "The count of the products of the answer. The default is the default of the API."
+    ),
+    feedback_limit: int = _option(
+        "The count of the feedback of the answer. The default is the default of the API."
+    ),
 ):
     """Return the profile of a seller."""
     _call(
