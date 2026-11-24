@@ -1,11 +1,22 @@
 """The commands of the CLI.
 
-The sign in uses the OAuth device grant. The terminal shows an address and
-a code, the customer allows the device in a browser, and the terminal polls
-for the token.
+The CLI models the API: the name of a command is the name of an operation
+of the API, and the name of an option is the name of a parameter of the
+API.
 
-The API key of the environment is honoured as well, so a machine caller
-needs no browser and no sign in.
+The output has three parts and they never mix:
+
+- the body of the answer of the API goes to stdout, so a caller can pipe
+  it into a tool that reads JSON;
+- the status and the rate limit go to stderr, so a person sees them and a
+  pipe does not;
+- the exit code is 0 when the API answered and 1 when it refused.
+
+A noun of the API can have an operation of its own AND operations under
+it, so `parazun product <ASIN>` and `parazun product reviews <ASIN>` are
+both commands. The operation of the noun is a hidden command of the group,
+and the group sends the first argument to it when the first argument is
+not the name of an operation under the noun.
 """
 
 import json
@@ -13,21 +24,451 @@ import sys
 import webbrowser
 
 import typer
+from typer.core import TyperGroup
 
 from . import client, config, oauth
 
+# The name of the hidden command that carries the operation of a noun.
+DEFAULT_OPERATION = "get"
+
 app = typer.Typer(
-    help="The command line client of the Parazun API.",
-    no_args_is_help=True,
+    help="The command line client of the Parazun API.", no_args_is_help=True
 )
 auth_app = typer.Typer(help="The sign in of the CLI.", no_args_is_help=True)
 app.add_typer(auth_app, name="auth")
 
 
-def _fail(message: str, code: int = 1):
+class NounGroup(TyperGroup):
+    """The group of the operations of one noun of the API.
+
+    A noun can have an operation of its own AND operations under it, so
+    `parazun product <ASIN>` and `parazun product reviews <ASIN>` are both
+    commands. The operation of the noun is a hidden command of the group,
+    and the group sends the first argument to it when the first argument is
+    not the name of an operation under the noun.
+    """
+
+    def parse_args(self, ctx, args):
+        if not args and self.get_command(ctx, DEFAULT_OPERATION) is not None:
+            # No argument at all: the operation of the noun runs with no
+            # argument, so the name of the hidden command is the argument.
+            args = [DEFAULT_OPERATION]
+        return super().parse_args(ctx, args)
+
+    def resolve_command(self, ctx, args):
+        if args and args[0] not in self.commands:
+            operation = self.get_command(ctx, DEFAULT_OPERATION)
+            if operation is not None:
+                return DEFAULT_OPERATION, operation, args
+        return super().resolve_command(ctx, args)
+
+
+def _option(help_text):
+    """An option of the CLI.
+
+    The option has NO default of its own, so the default of the API
+    applies to the parameters that the caller did not give. The name of
+    the option is the name of the parameter of the API, because Typer
+    turns the name of the argument into the name of the option.
+    """
+    return typer.Option(None, help=help_text)
+
+
+def _query(region=None, **values):
+    """The query of the request.
+
+    Only the parameters that the caller gave are sent, so the default of
+    the API applies to the rest. The marketplace is the one parameter that
+    the environment can name, with the value of PARAZUN_REGION.
+    """
+    query = {name: value for name, value in values.items() if value is not None}
+    marketplace = region if region is not None else config.region()
+    if marketplace is not None:
+        query["region"] = marketplace
+    return query
+
+
+def _status_line(answer):
+    """One line that names the status and the rate limit of the answer."""
+    line = "HTTP %d" % answer.status_code
+    for name in sorted(answer.headers):
+        line += " %s=%s" % (name, answer.headers[name])
+    return line
+
+
+def _emit(answer):
+    """Print the answer of the API.
+
+    The body goes to stdout and the status goes to stderr, so a pipe of
+    stdout is the body of the API and nothing else. A refusal ends the
+    run with the exit code 1.
+    """
+    line = _status_line(answer)
+    if answer.status_code >= 400:
+        typer.echo(answer.body, err=True)
+        typer.echo(line, err=True)
+        raise typer.Exit(code=1)
+    typer.echo(answer.body)
+    typer.echo(line, err=True)
+
+
+def _fail(message):
     """Print the message and end the run with a failure."""
     typer.echo(message, err=True)
-    raise typer.Exit(code=code)
+    raise typer.Exit(code=1)
+
+
+def _api_client():
+    """The client of the customer of this machine.
+
+    The token of the sign in is the credential, and the API key of the
+    environment is honoured as well, so a machine caller needs no browser.
+    """
+    credentials = config.load()
+    key = config.api_key()
+    if credentials is None and not key:
+        _fail(
+            "This machine is not signed in. Run `parazun auth login`, or set "
+            "the PARAZUN_API_KEY value of the environment."
+        )
+    return client.ApiClient(credentials=credentials, key=key)
+
+
+def _call(path, params=None, method="GET", data=None):
+    """Send one request to the API and print the answer."""
+    answer = _api_client().request(method, path, params=params or None, data=data)
+    _emit(answer)
+
+
+# ---------------------------------------------------------------- product
+
+
+product_app = typer.Typer(
+    cls=NounGroup,
+    help="The product of the API. `parazun product <ASIN>` returns one product.",
+    no_args_is_help=True,
+)
+app.add_typer(product_app, name="product")
+
+
+@product_app.command(DEFAULT_OPERATION, hidden=True)
+def product_get(
+    asin: str = typer.Argument(
+        ..., metavar="ASIN", help="The ASIN of the product."
+    ),
+    region: str = _option("The marketplace of the answer."),
+):
+    """Return the product of an ASIN."""
+    _call("/product", _query(region=region, asin=asin))
+
+
+@product_app.command("offers")
+def product_offers(
+    asin: str = typer.Argument(
+        ..., metavar="ASIN", help="The ASIN of the product."
+    ),
+    region: str = _option("The marketplace of the answer."),
+    zip_code: str = _option("The postal code of the delivery address."),
+    page: int = _option("The page of the answer."),
+):
+    """Return the offers of a product."""
+    _call(
+        "/product/offers",
+        _query(region=region, asin=asin, zip_code=zip_code, page=page),
+    )
+
+
+@product_app.command("reviews")
+def product_reviews(
+    asin: str = typer.Argument(
+        ..., metavar="ASIN", help="The ASIN of the product."
+    ),
+    region: str = _option("The marketplace of the answer."),
+    sort_by: str = _option("The sort of the reviews: helpful or recent."),
+    reviewer_type: str = _option("The reviews of all the reviewers, or of the buyers."),
+    format_type: str = _option("The formats of the reviews."),
+    media_type: str = _option("The contents of the reviews."),
+    page: int = _option("The page of the answer."),
+    filter_by_keyword: str = _option("A word that the reviews must carry."),
+):
+    """Return the reviews of a product."""
+    _call(
+        "/product/reviews",
+        _query(
+            region=region,
+            asin=asin,
+            sort_by=sort_by,
+            reviewer_type=reviewer_type,
+            format_type=format_type,
+            media_type=media_type,
+            page=page,
+            filter_by_keyword=filter_by_keyword,
+        ),
+    )
+
+
+@product_app.command("related")
+def product_related(
+    asin: str = typer.Argument(
+        ..., metavar="ASIN", help="The ASIN of the product."
+    ),
+    region: str = _option("The marketplace of the answer."),
+):
+    """Return the ASINs of the products that are related to a product."""
+    _call("/product/related-asins", _query(region=region, asin=asin))
+
+
+@product_app.command("summaries")
+def product_summaries(
+    asins: list[str] = typer.Argument(
+        ..., metavar="ASIN", help="The ASINs of the products."
+    ),
+    region: str = _option("The marketplace of the answer."),
+    format: str = _option("The format of the answer: json or csv."),
+    page: int = _option("The page of the answer."),
+    all: bool = typer.Option(
+        None,
+        "--all/--no-all",
+        help="Every page of the answer, or the page of the --page option.",
+    ),
+):
+    """Return the summaries of a list of products."""
+    _call(
+        "/product/summaries",
+        _query(
+            region=region,
+            asins=",".join(asins),
+            format=format,
+            page=page,
+            all=all,
+        ),
+    )
+
+
+# ----------------------------------------------------------------- search
+
+
+search_app = typer.Typer(
+    cls=NounGroup,
+    help="The search of the API. `parazun search <KEYWORD>` returns the results.",
+    no_args_is_help=True,
+)
+app.add_typer(search_app, name="search")
+
+
+@search_app.command(DEFAULT_OPERATION, hidden=True)
+def search_get(
+    keywords: str = typer.Argument(
+        ..., metavar="KEYWORD", help="The words of the search."
+    ),
+    region: str = _option("The marketplace of the answer."),
+    search_alias: str = _option("The index of the search: aps and the others."),
+    node_id: str = _option("The node of the category of the search."),
+    page: int = _option("The page of the answer."),
+):
+    """Return the results of a search."""
+    _call(
+        "/search",
+        _query(
+            region=region,
+            keywords=keywords,
+            search_alias=search_alias,
+            node_id=node_id,
+            page=page,
+        ),
+    )
+
+
+@search_app.command("aliases")
+def search_aliases(
+    region: str = _option("The marketplace of the answer."),
+):
+    """Return the indexes that a search can use."""
+    _call("/search/aliases", _query(region=region))
+
+
+# --------------------------------------------------------------- category
+
+
+category_app = typer.Typer(
+    cls=NounGroup,
+    help="The category of the API. `parazun category` returns the categories.",
+    no_args_is_help=True,
+)
+app.add_typer(category_app, name="category")
+
+
+@category_app.command(DEFAULT_OPERATION, hidden=True)
+def category_get(
+    region: str = _option("The marketplace of the answer."),
+    parent_id: int = _option("The node of the parent of the categories."),
+    page: int = _option("The page of the answer."),
+    size: int = _option("The count of the categories of the answer."),
+):
+    """Return the categories of a marketplace."""
+    _call(
+        "/category",
+        _query(region=region, parent_id=parent_id, page=page, size=size),
+    )
+
+
+@category_app.command("descendants")
+def category_descendants(
+    node_id: int = typer.Argument(
+        ..., metavar="NODE_ID", help="The node of the category."
+    ),
+    level: int = _option("The level of the descendants."),
+):
+    """Return the descendants of a category."""
+    _call("/category/descendants", _query(node_id=node_id, level=level))
+
+
+# -------------------------------------------------------------- rankings
+
+
+bestseller_app = typer.Typer(
+    cls=NounGroup,
+    help="The best sellers of the API.",
+    no_args_is_help=True,
+)
+app.add_typer(bestseller_app, name="bestseller")
+
+
+@bestseller_app.command("by-category")
+def bestseller_by_category(
+    node_id: int = typer.Argument(
+        ..., metavar="NODE_ID", help="The node of the category."
+    ),
+    region: str = _option("The marketplace of the answer."),
+):
+    """Return the best sellers of a category."""
+    _call("/bestseller/by-category", _query(region=region, node_id=node_id))
+
+
+@bestseller_app.command("by-department")
+def bestseller_by_department(
+    alias: str = typer.Argument(
+        ..., metavar="ALIAS", help="The alias of the department."
+    ),
+    region: str = _option("The marketplace of the answer."),
+):
+    """Return the best sellers of a department."""
+    _call("/bestseller/by-department", _query(region=region, alias=alias))
+
+
+new_releases_app = typer.Typer(
+    cls=NounGroup,
+    help="The new releases of the API.",
+    no_args_is_help=True,
+)
+app.add_typer(new_releases_app, name="new-releases")
+
+
+@new_releases_app.command("by-category")
+def new_releases_by_category(
+    node_id: int = typer.Argument(
+        ..., metavar="NODE_ID", help="The node of the category."
+    ),
+    region: str = _option("The marketplace of the answer."),
+):
+    """Return the new releases of a category."""
+    _call("/new-releases/by-category", _query(region=region, node_id=node_id))
+
+
+@new_releases_app.command("by-department")
+def new_releases_by_department(
+    alias: str = typer.Argument(
+        ..., metavar="ALIAS", help="The alias of the department."
+    ),
+    region: str = _option("The marketplace of the answer."),
+):
+    """Return the new releases of a department."""
+    _call("/new-releases/by-department", _query(region=region, alias=alias))
+
+
+# ------------------------------------------------------- departments, deals
+
+
+@app.command("departments")
+def departments(
+    region: str = _option("The marketplace of the answer."),
+):
+    """Return the departments of a marketplace."""
+    _call("/departments", _query(region=region))
+
+
+@app.command("deals")
+def deals(
+    region: str = _option("The marketplace of the answer."),
+    page: int = _option("The page of the answer."),
+):
+    """Return the deals of today."""
+    _call("/deals", _query(region=region, page=page))
+
+
+@app.command("seller")
+def seller(
+    seller_id: str = typer.Argument(
+        ..., metavar="SELLER_ID", help="The id of the seller."
+    ),
+    region: str = _option("The marketplace of the answer."),
+    include_products: bool = _option("The products of the seller."),
+    include_feedback: bool = _option("The feedback of the seller."),
+    products_limit: int = _option("The count of the products of the answer."),
+    feedback_limit: int = _option("The count of the feedback of the answer."),
+):
+    """Return the profile of a seller."""
+    _call(
+        "/seller",
+        _query(
+            region=region,
+            seller_id=seller_id,
+            include_products=include_products,
+            include_feedback=include_feedback,
+            products_limit=products_limit,
+            feedback_limit=feedback_limit,
+        ),
+    )
+
+
+# ------------------------------------------------------------- the escape hatch
+
+
+@app.command("request")
+def request(
+    path: str = typer.Argument(..., metavar="PATH", help="The path of the API."),
+    method: str = typer.Option("GET", "--method", help="The method of the request."),
+    param: list[str] = typer.Option(
+        [], "--param", help="A parameter of the request, as name=value."
+    ),
+    data: str = typer.Option(
+        None, "--data", help="The body of the request, as JSON."
+    ),
+):
+    """Send one request to any path of the API.
+
+    This is the way to an operation that has no command yet.
+    """
+    values = {}
+    for item in param:
+        if "=" not in item:
+            _fail("The parameter %s carries no '='. Use name=value." % item)
+            return
+        name, _, value = item.partition("=")
+        values[name] = value
+
+    body = None
+    if data:
+        try:
+            body = json.loads(data)
+        except json.JSONDecodeError as error:
+            _fail("The body is not JSON: %s" % error)
+            return
+
+    _call(path, params=values or None, method=method, data=body)
+
+
+# ------------------------------------------------------------------- the sign in
 
 
 @auth_app.command("login")
@@ -145,66 +586,6 @@ def logout():
 
     config.remove()
     typer.echo("Signed out. The credentials are deleted.")
-
-
-@app.command("request")
-def request(
-    path: str = typer.Argument(..., help="The path of the API, with its query."),
-    method: str = typer.Option("GET", "--method", help="The method of the request."),
-    param: list[str] = typer.Option(
-        [], "--param", help="A query parameter, as name=value. It can be used twice."
-    ),
-    data: str = typer.Option(
-        None, "--data", help="The body of the request, as JSON."
-    ),
-):
-    """Send one request to the API with the credential of this machine.
-
-    The credential is the OAuth token of the sign in, or the API key of the
-    PARAZUN_API_KEY value of the environment.
-    """
-    credentials = config.load()
-    key = config.api_key()
-    if credentials is None and not key:
-        _fail(
-            "This machine is not signed in. Run `parazun auth login`, or set "
-            "the PARAZUN_API_KEY value of the environment."
-        )
-        return
-
-    params = {}
-    for item in param:
-        if "=" not in item:
-            _fail("The parameter %s carries no '='. Use name=value." % item)
-            return
-        name, _, value = item.partition("=")
-        params[name] = value
-
-    body = None
-    if data:
-        try:
-            body = json.loads(data)
-        except json.JSONDecodeError as error:
-            _fail("The body is not JSON: %s" % error)
-            return
-
-    api = client.ApiClient(credentials=credentials, key=key)
-    try:
-        answer = api.request(method, path, params=params or None, data=body)
-    except client.ApiError as error:
-        _fail(str(error))
-        return
-    except Exception as error:  # noqa: BLE001 - the message reaches the caller
-        _fail("The request failed: %s" % error)
-        return
-
-    for name, value in sorted(answer.headers.items()):
-        typer.echo("%s: %s" % (name, value))
-    typer.echo("Status: %s" % answer.status_code)
-    typer.echo(answer.body)
-
-    if answer.status_code >= 400:
-        raise typer.Exit(code=1)
 
 
 def main():

@@ -1,10 +1,16 @@
 # parazun-cli
 
-The command line client of the Parazun API.
+The command line client of the [Parazun API](https://parazun.com).
 
-The CLI signs a customer in with the OAuth device grant and calls the API
-with the access token. The API key of the environment is honoured as well,
-so a machine caller needs no browser and no sign in.
+The CLI models the API. The name of a command is the name of an operation
+of the API, and the name of an option is the name of a parameter of the
+API.
+
+```
+parazun product B00FLYWNYQ
+parazun search "coffee grinder"
+parazun product reviews B00FLYWNYQ --sort-by recent
+```
 
 ## Install
 
@@ -37,25 +43,48 @@ The credentials are stored in `~/.config/parazun/credentials.json`. The
 file is readable by the owner alone. The access token lives one hour, and
 the CLI refreshes it on its own, so the customer stays signed in.
 
-## Use the API
+## The commands
 
-```
-parazun request /product/?asin=B00FLYWNYQ
-parazun request /product/ --param asin=B00FLYWNYQ --param region=US
-parazun request /search --method POST --data '{"q": "coffee grinder"}'
-```
-
-The CLI prints the rate limit headers, the status and the body of the
-answer.
-
-## The other commands
-
-| Command | What it does |
+| The command | What it does |
 | --- | --- |
+| `parazun product <ASIN>` | The product of an ASIN. |
+| `parazun product offers <ASIN>` | The offers of a product. |
+| `parazun product reviews <ASIN>` | The reviews of a product. |
+| `parazun product related <ASIN>` | The ASINs of the related products. |
+| `parazun product summaries <ASIN>...` | The summaries of a list of products. |
+| `parazun search <KEYWORD>` | The results of a search. |
+| `parazun search aliases` | The indexes that a search can use. |
+| `parazun category` | The categories of a marketplace. |
+| `parazun category descendants <NODE_ID>` | The descendants of a category. |
+| `parazun departments` | The departments of a marketplace. |
+| `parazun deals` | The deals of today. |
+| `parazun bestseller by-category <NODE_ID>` | The best sellers of a category. |
+| `parazun bestseller by-department <ALIAS>` | The best sellers of a department. |
+| `parazun new-releases by-category <NODE_ID>` | The new releases of a category. |
+| `parazun new-releases by-department <ALIAS>` | The new releases of a department. |
+| `parazun seller <SELLER_ID>` | The profile of a seller. |
+| `parazun request <PATH>` | Any path of the API. The way to an operation that has no command yet. |
 | `parazun auth login` | Sign in with the device grant. |
-| `parazun auth status` | Show the state of the sign in of this machine. |
+| `parazun auth status` | The state of the sign in of this machine. |
 | `parazun auth logout` | Revoke the token and delete the credentials. |
-| `parazun request PATH` | Send one request to the API. |
+
+`parazun --help` and `parazun <command> --help` name every option of every
+command.
+
+## The output
+
+The CLI prints three things and they never mix:
+
+- **stdout** carries the body of the answer of the API, exactly as the API
+  answered it. A pipe of stdout is the body of the API and nothing else.
+- **stderr** carries one line: the status and the rate limit of the answer.
+- **the exit code** is 0 when the API answered and 1 when it refused. A
+  refusal puts the body of the refusal on stderr.
+
+```
+$ parazun product B00FLYWNYQ | jq -r .title
+Instant Pot Duo 6 Qt 7-in-1 Electric Pressure Cooker, Stainless Steel
+```
 
 ## The values of the environment
 
@@ -65,10 +94,16 @@ answer.
 | `PARAZUN_PORTAL_URL` | The address of the portal, where the tokens come from. | `https://portal.parazun.com` |
 | `PARAZUN_CLIENT_ID` | The id of the public client. | `parazun-cli` |
 | `PARAZUN_API_KEY` | An API key, for a machine caller. | none |
+| `PARAZUN_REGION` | The marketplace of the answer. | the default of the API |
 | `PARAZUN_CONFIG_DIR` | The directory of the credentials file. | `~/.config/parazun` |
 
 The API key of the environment wins over the token of the sign in. A
 machine that carries a key needs no sign in.
+
+**THE CLI SENDS ONLY THE PARAMETERS THAT THE CALLER GAVE.** The default of
+a parameter lives in the API, so a parameter that the caller did not give
+is not sent and the default of the API applies. The `--region` option is
+the one that the environment can name, with the value of `PARAZUN_REGION`.
 
 ## The rules of the client
 

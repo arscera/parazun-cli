@@ -11,8 +11,9 @@ import stat
 
 import httpx
 import pytest
+from typer.testing import CliRunner
 
-from parazun_cli import client, config, oauth
+from parazun_cli import cli, client, config, oauth
 
 
 @pytest.fixture(autouse=True)
@@ -21,13 +22,18 @@ def a_private_config_dir(tmp_path, monkeypatch):
     monkeypatch.setenv("PARAZUN_CONFIG_DIR", str(tmp_path / "config"))
 
 
+# The real client of httpx, captured before any test replaces it. The
+# helper below replaces the client again, and a helper that captured the
+# replaced client would answer with the handler of the first call.
+REAL_CLIENT = httpx.Client
+
+
 def _fake_transport(monkeypatch, handler):
     """Make every httpx client answer with the handler."""
-    original = httpx.Client
 
     def factory(*args, **kwargs):
         kwargs["transport"] = httpx.MockTransport(handler)
-        return original(*args, **kwargs)
+        return REAL_CLIENT(*args, **kwargs)
 
     monkeypatch.setattr(httpx, "Client", factory)
 
@@ -260,3 +266,262 @@ def test_the_client_refreshes_a_refused_token(monkeypatch):
     stored = config.load()
     assert stored.access_token == "the-new-access-token"
     assert stored.refresh_token == "the-new-refresh-token"
+
+
+# ------------------------------------------------------------- the commands
+
+
+runner = CliRunner()
+
+
+def _run(monkeypatch, arguments, status=200, body='{"ok": true}'):
+    """Run the CLI with a fake transport and return the result and the request."""
+    seen = {}
+
+    def handler(request):
+        seen["path"] = request.url.path
+        seen["params"] = dict(request.url.params)
+        seen["method"] = request.method
+        return httpx.Response(
+            status,
+            content=body.encode("utf-8"),
+            headers={
+                "content-type": "application/json",
+                "x-ratelimit-limit": "20",
+                "x-ratelimit-remaining": "19",
+            },
+        )
+
+    _fake_transport(monkeypatch, handler)
+    monkeypatch.setenv("PARAZUN_API_KEY", "the-api-key")
+    result = runner.invoke(cli.app, arguments)
+    return result, seen
+
+
+def test_the_product_command_asks_for_the_product_of_the_asin(monkeypatch):
+    """The command of a noun is the operation of the noun."""
+    result, seen = _run(monkeypatch, ["product", "B00FLYWNYQ"])
+    assert result.exit_code == 0
+    assert seen["path"] == "/product"
+    assert seen["params"] == {"asin": "B00FLYWNYQ"}
+    assert json.loads(result.stdout) == {"ok": True}
+    assert "HTTP 200" in result.stderr
+    assert "x-ratelimit-limit=20" in result.stderr
+
+
+def test_the_offers_command_asks_for_the_offers_of_the_product(monkeypatch):
+    """The operation under the noun is a command under the noun."""
+    result, seen = _run(monkeypatch, ["product", "offers", "B00FLYWNYQ"])
+    assert result.exit_code == 0
+    assert seen["path"] == "/product/offers"
+    assert seen["params"] == {"asin": "B00FLYWNYQ"}
+
+
+def test_the_reviews_command_names_the_parameters_of_the_api(monkeypatch):
+    """The name of an option is the name of a parameter of the API."""
+    result, seen = _run(
+        monkeypatch,
+        [
+            "product",
+            "reviews",
+            "B00FLYWNYQ",
+            "--sort-by",
+            "recent",
+            "--reviewer-type",
+            "avp_only_reviews",
+            "--filter-by-keyword",
+            "coffee",
+            "--page",
+            "2",
+        ],
+    )
+    assert result.exit_code == 0
+    assert seen["path"] == "/product/reviews"
+    assert seen["params"] == {
+        "asin": "B00FLYWNYQ",
+        "sort_by": "recent",
+        "reviewer_type": "avp_only_reviews",
+        "filter_by_keyword": "coffee",
+        "page": "2",
+    }
+
+
+def test_the_related_command_asks_for_the_related_asins(monkeypatch):
+    """The path of the API is the path of the command."""
+    result, seen = _run(monkeypatch, ["product", "related", "B00FLYWNYQ"])
+    assert result.exit_code == 0
+    assert seen["path"] == "/product/related-asins"
+    assert seen["params"] == {"asin": "B00FLYWNYQ"}
+
+
+def test_the_summaries_command_joins_the_asins(monkeypatch):
+    """The parameter of the API takes the values separated by a comma."""
+    result, seen = _run(
+        monkeypatch, ["product", "summaries", "B00FLYWNYQ", "B000F0Q1SP"]
+    )
+    assert result.exit_code == 0
+    assert seen["path"] == "/product/summaries"
+    assert seen["params"] == {"asins": "B00FLYWNYQ,B000F0Q1SP"}
+
+
+def test_the_search_command_asks_for_the_results_of_the_words(monkeypatch):
+    """The search of the API is a command of the CLI."""
+    result, seen = _run(monkeypatch, ["search", "coffee grinder"])
+    assert result.exit_code == 0
+    assert seen["path"] == "/search"
+    assert seen["params"] == {"keywords": "coffee grinder"}
+
+
+def test_the_search_aliases_command_asks_for_the_indexes(monkeypatch):
+    """The aliases of the search are a command under the search."""
+    result, seen = _run(monkeypatch, ["search", "aliases"])
+    assert result.exit_code == 0
+    assert seen["path"] == "/search/aliases"
+
+
+def test_the_category_command_asks_for_the_categories(monkeypatch):
+    """A noun whose operation needs no argument runs with no argument."""
+    result, seen = _run(monkeypatch, ["category"])
+    assert result.exit_code == 0
+    assert seen["path"] == "/category"
+
+
+def test_the_descendants_command_asks_for_the_descendants(monkeypatch):
+    """The descendants of a category are a command under the category."""
+    result, seen = _run(monkeypatch, ["category", "descendants", "1055398"])
+    assert result.exit_code == 0
+    assert seen["path"] == "/category/descendants"
+    assert seen["params"] == {"node_id": "1055398"}
+
+
+def test_the_departments_command_asks_for_the_departments(monkeypatch):
+    """The departments of a marketplace are a command of their own."""
+    result, seen = _run(monkeypatch, ["departments"])
+    assert result.exit_code == 0
+    assert seen["path"] == "/departments"
+
+
+def test_the_deals_command_asks_for_the_deals(monkeypatch):
+    """The deals of today are a command of their own."""
+    result, seen = _run(monkeypatch, ["deals"])
+    assert result.exit_code == 0
+    assert seen["path"] == "/deals"
+
+
+def test_the_bestseller_commands_ask_for_the_two_kinds(monkeypatch):
+    """The best sellers have one command by category and one by department."""
+    result, seen = _run(monkeypatch, ["bestseller", "by-category", "1055398"])
+    assert result.exit_code == 0
+    assert seen["path"] == "/bestseller/by-category"
+    assert seen["params"] == {"node_id": "1055398"}
+
+    result, seen = _run(monkeypatch, ["bestseller", "by-department", "kitchen"])
+    assert result.exit_code == 0
+    assert seen["path"] == "/bestseller/by-department"
+    assert seen["params"] == {"alias": "kitchen"}
+
+
+def test_the_new_releases_commands_ask_for_the_two_kinds(monkeypatch):
+    """The new releases have one command by category and one by department."""
+    result, seen = _run(monkeypatch, ["new-releases", "by-category", "1055398"])
+    assert result.exit_code == 0
+    assert seen["path"] == "/new-releases/by-category"
+    assert seen["params"] == {"node_id": "1055398"}
+
+    result, seen = _run(monkeypatch, ["new-releases", "by-department", "kitchen"])
+    assert result.exit_code == 0
+    assert seen["path"] == "/new-releases/by-department"
+    assert seen["params"] == {"alias": "kitchen"}
+
+
+def test_the_seller_command_asks_for_the_profile(monkeypatch):
+    """The profile of a seller is a command of its own."""
+    result, seen = _run(monkeypatch, ["seller", "A1B2C3D4E5"])
+    assert result.exit_code == 0
+    assert seen["path"] == "/seller"
+    assert seen["params"] == {"seller_id": "A1B2C3D4E5"}
+
+
+def test_the_seller_command_sends_the_flags_that_were_given(monkeypatch):
+    """A flag that the caller did not give is not sent."""
+    result, seen = _run(
+        monkeypatch, ["seller", "A1B2C3D4E5", "--include-products"]
+    )
+    assert result.exit_code == 0
+    assert seen["params"] == {"seller_id": "A1B2C3D4E5", "include_products": "true"}
+
+
+def test_the_request_command_reaches_any_path(monkeypatch):
+    """The escape hatch reaches a path that has no command."""
+    result, seen = _run(monkeypatch, ["request", "/whatever", "--param", "a=1"])
+    assert result.exit_code == 0
+    assert seen["path"] == "/whatever"
+    assert seen["params"] == {"a": "1"}
+
+
+def test_the_cli_sends_only_the_parameters_that_the_caller_gave(monkeypatch):
+    """The default of the API applies to the parameters that are not sent."""
+    result, seen = _run(monkeypatch, ["product", "B00FLYWNYQ"])
+    assert result.exit_code == 0
+    assert seen["params"] == {"asin": "B00FLYWNYQ"}
+    assert "region" not in seen["params"]
+
+
+def test_the_marketplace_comes_from_the_environment(monkeypatch):
+    """The environment names the marketplace of the answer."""
+    monkeypatch.setenv("PARAZUN_REGION", "DE")
+    result, seen = _run(monkeypatch, ["product", "B00FLYWNYQ"])
+    assert result.exit_code == 0
+    assert seen["params"] == {"asin": "B00FLYWNYQ", "region": "DE"}
+
+
+def test_the_marketplace_of_the_caller_wins_over_the_environment(monkeypatch):
+    """The value of the caller is the value that is sent."""
+    monkeypatch.setenv("PARAZUN_REGION", "DE")
+    result, seen = _run(monkeypatch, ["product", "B00FLYWNYQ", "--region", "JP"])
+    assert result.exit_code == 0
+    assert seen["params"] == {"asin": "B00FLYWNYQ", "region": "JP"}
+
+
+def test_the_summaries_command_can_ask_for_one_page(monkeypatch):
+    """The flag of the API has both of its values in the CLI."""
+    result, seen = _run(
+        monkeypatch, ["product", "summaries", "B00FLYWNYQ", "--no-all"]
+    )
+    assert result.exit_code == 0
+    assert seen["params"] == {"asins": "B00FLYWNYQ", "all": "false"}
+
+
+def test_a_refusal_goes_to_stderr_and_the_exit_code_is_one(monkeypatch):
+    """A refusal does not put the body of the refusal on stdout."""
+    result, seen = _run(
+        monkeypatch,
+        ["product", "B00FLYWNYQ"],
+        status=402,
+        body='{"error": "No active quota."}',
+    )
+    assert result.exit_code == 1
+    assert result.stdout.strip() == ""
+    assert "No active quota." in result.stderr
+    assert "HTTP 402" in result.stderr
+
+
+def test_the_body_of_the_answer_is_not_reformatted(monkeypatch):
+    """The body of the API is the output of the CLI."""
+    body = '{"b": 2, "a": [1, {"c": 3}]}'
+    result, seen = _run(monkeypatch, ["product", "B00FLYWNYQ"], body=body)
+    assert result.exit_code == 0
+    assert result.stdout.strip() == body
+
+
+def test_the_cli_without_a_credential_says_what_to_do(monkeypatch):
+    """A machine with no credential is told how to get one."""
+    monkeypatch.delenv("PARAZUN_API_KEY", raising=False)
+
+    def handler(request):
+        return httpx.Response(200, json={"ok": True})
+
+    _fake_transport(monkeypatch, handler)
+    result = runner.invoke(cli.app, ["product", "B00FLYWNYQ"])
+    assert result.exit_code == 1
+    assert "parazun auth login" in result.stderr

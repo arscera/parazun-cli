@@ -55,6 +55,15 @@ def client_id() -> str:
     return value if value else DEFAULT_CLIENT_ID
 
 
+def region() -> str | None:
+    """The marketplace of the answer, when the environment names one.
+
+    The value is None when the environment is silent, and then the
+    command sends no marketplace and the default of the API applies.
+    """
+    return os.getenv("PARAZUN_REGION", "").strip() or None
+
+
 def api_key() -> str | None:
     """The API key of the environment, when there is one."""
     value = os.getenv("PARAZUN_API_KEY", "").strip()
