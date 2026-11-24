@@ -129,6 +129,42 @@ def test_the_poll_gives_up_when_the_customer_denies_the_device(monkeypatch):
         )
 
 
+def test_the_message_of_a_refusal_names_the_code_of_the_provider(monkeypatch):
+    """A provider that answers without a description still names the cause.
+
+    The answer of the provider was `{"error": "invalid_grant"}` and the
+    message of the client was "the provider refused the request", so the
+    operator read a message that named nothing.
+    """
+
+    def handler(request):
+        return httpx.Response(400, json={"error": "invalid_grant"})
+
+    _fake_transport(monkeypatch, handler)
+    with pytest.raises(oauth.OAuthError) as failure:
+        oauth.poll_for_token(
+            "https://portal.parazun.test", "parazun-cli", "the-device-code", interval=0
+        )
+    assert "invalid_grant" in str(failure.value)
+    assert failure.value.error == "invalid_grant"
+
+
+def test_the_description_of_the_provider_is_the_message(monkeypatch):
+    """A provider that answers with a description uses it."""
+
+    def handler(request):
+        return httpx.Response(
+            400, json={"error": "invalid_client", "error_description": "the client is unknown"}
+        )
+
+    _fake_transport(monkeypatch, handler)
+    with pytest.raises(oauth.OAuthError) as failure:
+        oauth.poll_for_token(
+            "https://portal.parazun.test", "parazun-cli", "the-device-code", interval=0
+        )
+    assert "the client is unknown" in str(failure.value)
+
+
 def test_the_refresh_answers_a_new_pair(monkeypatch):
     """The provider rotates the refresh token, so the answer carries a new one."""
 

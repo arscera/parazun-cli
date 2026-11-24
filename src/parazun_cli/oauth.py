@@ -72,8 +72,19 @@ def _post_form(client: httpx.Client, url: str, data: dict) -> dict:
     if response.status_code >= 400:
         error = body.get("error", "") if isinstance(body, dict) else ""
         description = body.get("error_description", "") if isinstance(body, dict) else ""
+        # The code of the refusal is part of the message. A provider that
+        # answers with the code and without a description leaves the
+        # operator with a message that names nothing, and the cause of the
+        # failure is then somewhere else.
+        message = description
+        if not message:
+            message = (
+                "the provider refused the request: %s" % error
+                if error
+                else "the provider refused the request"
+            )
         raise OAuthError(
-            description or "the provider refused the request",
+            message,
             error=error,
             description=description,
         )
