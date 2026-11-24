@@ -21,6 +21,11 @@ dev = ["pytest>=8,<9"]
 [project.scripts]
 parazun = "parazun_cli.cli:main"
 
+[project.urls]
+Homepage = "https://parazun.com"
+Repository = "https://github.com/arscera/parazun-cli"
+Issues = "https://github.com/arscera/parazun-cli/issues"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/parazun_cli"]
 

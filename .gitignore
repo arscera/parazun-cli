@@ -5,3 +5,19 @@ dist/
 build/
 *.egg-info/
 .pytest_cache/
+
+# The credentials of the CLI. The file holds the access token and the
+# refresh token of the customer, so it must never reach the repository.
+# The directory of the credentials is ~/.config/parazun, but a customer
+# who sets PARAZUN_CONFIG_DIR to a clone would write the file here.
+credentials.json
+.credentials-*
+
+# Local environment files, keys and certificates.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
