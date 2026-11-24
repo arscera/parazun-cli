@@ -95,7 +95,7 @@ words of the path, so the surface teaches the API.
 **THE NAME OF AN OPTION IS THE NAME OF THE PARAMETER**, with the hyphen of
 the API kept: `--sort-by`, `--reviewer-type`, `--format-type`,
 `--media-type`, `--filter-by-keyword`, `--zip-code`, `--parent-id`,
-`--node-id`, `--search-alias`, `--books-new`, `--include-products`,
+`--node-id`, `--search-alias`, `--include-products`,
 `--include-feedback`, `--products-limit`, `--feedback-limit`.
 
 **THE PARAMETER NAMES OF THE API ARE NOT ALWAYS SINGULAR.** `/search` takes
@@ -169,9 +169,16 @@ handled as a refusal.
 **A PARAMETER WHOSE VALUE IS AN ENUMERATION OF THE API TAKES THE VALUE OF
 THE API.** The parameter `all` of the product summaries is the enumeration
 `["1", "0"]`, so the option takes `1` or `0`. A flag of the CLI would send
-`true` and `false`, and the API takes neither of them. The CLI holds no
-copy of the meaning of an enumeration of the API, so it holds no copy of
-the enumeration either.
+`true` and `false`, and the API takes neither of them. The value the
+caller gives is the value that is sent, untranslated.
+
+**THE HELP MAY NAME THE VALUES OF AN ENUMERATION.** A stale list is a drift
+of the documentation and not of the behaviour: the value the caller gives
+is the value that is sent, so a value the API adds later works before the
+help mentions it. The DEFAULT is a different thing: a copy of a default
+would change what the CLI does, so the CLI holds no copy of any default,
+and the help of an option points at the default of the API instead of
+naming its value.
 
 **THE STATUS LINE IS ONE LINE.** It names the status and every rate limit
 header the answer carried:
