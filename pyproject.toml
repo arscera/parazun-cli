@@ -1,0 +1,28 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "parazun-cli"
+version = "0.1.0"
+description = "The command line client of the Parazun API."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Proprietary" }
+authors = [{ name = "Arscera LLC" }]
+dependencies = [
+    "httpx>=0.28,<0.29",
+    "typer>=0.12,<1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<9"]
+
+[project.scripts]
+parazun = "parazun_cli.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/parazun_cli"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
