@@ -43,6 +43,20 @@ The credentials are stored in `~/.config/parazun/credentials.json`. The
 file is readable by the owner alone. The access token lives one hour, and
 the CLI refreshes it on its own, so the customer stays signed in.
 
+## Sign out
+
+```
+parazun auth logout
+```
+
+The CLI revokes the token at the portal and deletes the file of the
+credentials.
+
+A device can also be signed out without the CLI: the page of the API keys
+of the portal lists the devices that signed in to the account, and it
+revokes one of them. The CLI says so when the portal revoked a device
+and the CLI asks for a new token.
+
 ## The commands
 
 | The command | What it does |

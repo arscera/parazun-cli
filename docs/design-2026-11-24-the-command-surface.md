@@ -203,14 +203,22 @@ not change. The device grant works, the credentials live in
 `~/.config/parazun/credentials.json` with the mode 0600, and the token is
 refreshed on its own.
 
+**THE MESSAGES NAME THE CAUSE (2026-11-24, F78).** The portal can revoke
+a device, and the refresh token of that device is dead from that moment.
+The provider answers the refresh with the code `invalid_grant` and no
+description, so the message of the CLI says that the sign-in of the
+device is over and that `parazun auth login` signs it in again. The
+message of the logout names the page of the portal that revokes a device,
+because that page exists now.
+
 ## The shape of the code
 
 | The file | What it holds |
 | --- | --- |
-| `src/parazun_cli/cli.py` | the Typer app, the command groups, the commands, the output contract |
+| `src/parazun_cli/cli.py` | the Typer app, the command groups, the commands, the output contract. It gains the message of the logout |
 | `src/parazun_cli/client.py` | the HTTP client, the credential, the refresh. It does not change |
 | `src/parazun_cli/config.py` | the credential store and the values of the environment. It gains the region |
-| `src/parazun_cli/oauth.py` | the device grant. It does not change |
+| `src/parazun_cli/oauth.py` | the device grant. It gains the message of a revoked device |
 | `tests/test_cli.py` | the tests of the commands |
 
 **THE PATH OF AN OPERATION IS NAMED IN ONE PLACE.** Every command builds

@@ -34,6 +34,12 @@ REVOKE_PATH = "/identity/o/api/revoke"
 PENDING = "authorization_pending"
 SLOW_DOWN = "slow_down"
 
+# The error that the provider answers when a refresh token is not good any
+# more. The portal signs a device out, and the refresh token of that device
+# is dead from that moment. The provider also answers it when the token was
+# rotated somewhere else, so the message names both causes.
+INVALID_GRANT = "invalid_grant"
+
 
 class OAuthError(RuntimeError):
     """The provider refused a request, or the customer refused the device."""
@@ -181,17 +187,32 @@ def refresh_access_token(
 
     The provider rotates the refresh token on every refresh, so the answer
     carries a new one and the caller must write it down.
+
+    A refusal with the code `invalid_grant` means the refresh token is
+    dead. The portal signs a device out, and the customer can sign the
+    device in again, so the message says what happened and what to do.
     """
-    with httpx.Client(timeout=timeout) as client:
-        body = _post_form(
-            client,
-            portal + TOKEN_PATH,
-            {
-                "grant_type": REFRESH_GRANT,
-                "refresh_token": refresh_token,
-                "client_id": client_id,
-            },
-        )
+    try:
+        with httpx.Client(timeout=timeout) as client:
+            body = _post_form(
+                client,
+                portal + TOKEN_PATH,
+                {
+                    "grant_type": REFRESH_GRANT,
+                    "refresh_token": refresh_token,
+                    "client_id": client_id,
+                },
+            )
+    except OAuthError as error:
+        if error.error != INVALID_GRANT:
+            raise
+        raise OAuthError(
+            "the sign-in of this device is over. The portal signed the "
+            "device out, or the refresh token was rotated somewhere else. "
+            "Run `parazun auth login` to sign in again.",
+            error=error.error,
+            description=error.description,
+        ) from error
     if not body.get("access_token"):
         raise OAuthError("the provider answered a refresh without a token")
     return body

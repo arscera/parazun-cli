@@ -559,3 +559,49 @@ def test_the_cli_without_a_credential_says_what_to_do(monkeypatch):
     result = runner.invoke(cli.app, ["product", "B00FLYWNYQ"])
     assert result.exit_code == 1
     assert "parazun auth login" in result.stderr
+
+
+def test_the_refresh_of_a_revoked_device_says_what_to_do(monkeypatch):
+    """A refusal of the refresh names the cause and the way out."""
+
+    def handler(request):
+        return httpx.Response(400, json={"error": "invalid_grant"})
+
+    _fake_transport(monkeypatch, handler)
+    with pytest.raises(oauth.OAuthError) as failure:
+        oauth.refresh_access_token(
+            "https://portal.parazun.test", "parazun-cli", "the-refresh-token"
+        )
+    assert failure.value.error == "invalid_grant"
+    assert "signed the device out" in str(failure.value)
+    assert "parazun auth login" in str(failure.value)
+
+
+def test_the_command_of_a_revoked_device_says_what_to_do(monkeypatch):
+    """The customer of a device that the portal revoked reads what to do."""
+    config.store(_credentials(expires_at=config.expiry(-60)))
+
+    def handler(request):
+        if request.url.path.endswith("/identity/o/api/token"):
+            return httpx.Response(400, json={"error": "invalid_grant"})
+        return httpx.Response(200, json={"ok": True})
+
+    _fake_transport(monkeypatch, handler)
+    result = runner.invoke(cli.app, ["product", "B00FLYWNYQ"])
+    assert result.exit_code == 1
+    assert result.stdout.strip() == ""
+    assert "signed the device out" in result.stderr
+    assert "parazun auth login" in result.stderr
+
+
+def test_the_logout_names_the_page_of_the_portal(monkeypatch):
+    """A token that lives on can be revoked on the page of the portal."""
+    config.store(_credentials())
+
+    def handler(request):
+        return httpx.Response(400, json={"error": "invalid_request"})
+
+    _fake_transport(monkeypatch, handler)
+    result = runner.invoke(cli.app, ["auth", "logout"])
+    assert result.exit_code == 1
+    assert "https://portal.parazun.test/keys/" in result.stderr

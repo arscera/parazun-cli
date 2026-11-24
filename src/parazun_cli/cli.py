@@ -658,7 +658,8 @@ def logout():
             )
             typer.echo(
                 "The file was deleted, but the token may live on. Revoke it "
-                "at the portal if it matters.",
+                "on the page of the API keys of the portal (%s/keys/) if it "
+                "matters." % credentials.portal_url.rstrip("/"),
                 err=True,
             )
             config.remove()
