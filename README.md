@@ -79,3 +79,7 @@ machine that carries a key needs no sign in.
   again each time.
 - The device grant issues no `id_token`. The API reads the token row, so
   the CLI needs none.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
