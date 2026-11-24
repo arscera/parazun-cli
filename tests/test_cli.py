@@ -5,6 +5,7 @@ a fake transport, so every step of the flow is measured and no request
 leaves the machine.
 """
 
+import json
 import os
 import stat
 
@@ -148,6 +149,22 @@ def test_the_refresh_answers_a_new_pair(monkeypatch):
     )
     assert body["access_token"] == "the-new-access-token"
     assert body["refresh_token"] == "the-new-refresh-token"
+
+
+def test_the_body_of_the_request_is_json(monkeypatch):
+    """A body that is an object is sent as JSON, because the API reads JSON."""
+    seen = {}
+
+    def handler(request):
+        seen["content"] = request.content
+        seen["content_type"] = request.headers.get("content-type")
+        return httpx.Response(200, json={"ok": True})
+
+    _fake_transport(monkeypatch, handler)
+    api = client.ApiClient(credentials=_credentials())
+    api.request("POST", "/search", data={"q": "coffee grinder"})
+    assert json.loads(seen["content"]) == {"q": "coffee grinder"}
+    assert "application/json" in seen["content_type"]
 
 
 def test_the_client_sends_the_bearer_header(monkeypatch):

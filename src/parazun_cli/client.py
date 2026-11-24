@@ -110,7 +110,12 @@ class ApiClient:
         data: Any = None,
         headers: dict | None = None,
     ) -> Answer:
-        """Send one request to the API and return the answer."""
+        """Send one request to the API and return the answer.
+
+        A body that is an object or a list is sent as JSON, because the API
+        reads JSON. A body that is text is sent as it is, with the header of
+        JSON, so a caller can send a body that the CLI did not build.
+        """
         if self.credentials is not None and self.credentials.is_expired():
             self._refresh()
 
@@ -119,13 +124,21 @@ class ApiClient:
         if headers:
             request_headers.update(headers)
 
+        body: dict = {}
+        if data is not None:
+            if isinstance(data, (dict, list)):
+                body["json"] = data
+            else:
+                body["content"] = data
+                request_headers.setdefault("content-type", "application/json")
+
         with httpx.Client(timeout=self.timeout) as client:
             response = client.request(
                 method.upper(),
                 self.base_url + path,
                 params=params,
-                data=data,
                 headers=request_headers,
+                **body,
             )
 
             if response.status_code == 401 and self._refresh():
@@ -137,8 +150,8 @@ class ApiClient:
                     method.upper(),
                     self.base_url + path,
                     params=params,
-                    data=data,
                     headers=request_headers,
+                    **body,
                 )
 
         return Answer(
