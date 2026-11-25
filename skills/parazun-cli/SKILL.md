@@ -30,7 +30,7 @@ Three routes. Pick one.
 | --- | --- | --- |
 | the repository | `uv tool install git+https://github.com/arscera/parazun-cli.git` | a machine that runs the agent. The binary lands in the tool directory of the user |
 | a clone | `uv tool install .` from the root of a clone | a customer with the source |
-| the published repository | `uv tool install git+https://github.com/arscera/parazun-cli.git` | only after the owner makes the repository public |
+| the published repository | `uv tool install git+https://github.com/arscera/parazun-cli.git` | a customer, once the repository is public |
 
 The command is `parazun`. It needs Python 3.10 or later.
 
@@ -96,10 +96,9 @@ your own works the same way.
 
 The project has two dependencies and no more: `httpx` and `typer`.
 
-**The GitHub route needs the repository to be public.** The repository of the
-CLI is private until the owner publishes it, so the line in the README of
-the repository works for a customer only after that. Everything else in this
-skill works today.
+**The GitHub route needs the repository to be public.** A customer who
+cannot reach the repository installs the client from a clone, and the skill
+of the repository comes with the clone.
 
 ## Sign in
 
