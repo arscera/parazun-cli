@@ -28,11 +28,12 @@ Install the Parazun CLI and its skill, then verify the setup.
   harness. If your harness has no skills directory, read the file
   `parazun-cli/skills/parazun-cli/SKILL.md` into your context instead.
   Follow the Quickstart of the SKILL.md.
-- Get a credential. An agent that runs unattended sets PARAZUN_API_KEY=<key>
-  in the environment; the key of a customer is on the page
-  https://portal.parazun.com/keys/. A person signs in with
-  `parazun auth login` and must allow the device in a browser, so an agent
-  cannot finish this step alone.
+- Get a credential. Run `parazun auth login`. The CLI prints an address and
+  a code and opens a browser. Ask the user to sign in to the portal and
+  allow the device; when no browser opens on their machine, give them the
+  printed address and code and wait. The CLI signs itself in. When no human
+  can click, set PARAZUN_API_KEY=<key> in the environment instead; the key
+  of a customer is on the page https://portal.parazun.com/keys/
 - Verify: run `python3 <the path of the skill>/scripts/check_setup.py`, then
   make one call: `parazun product B00FLYWNYQ`
 ```

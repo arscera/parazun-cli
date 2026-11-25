@@ -46,11 +46,15 @@ tool on the path. A sandbox often refuses a path that is outside it.
 
 Two credentials exist. Use the one that fits the caller.
 
-- **A person at a terminal** signs in with the device grant:
+- **A user with a browser** signs in with the device grant:
   `parazun auth login`. The command prints an address and a code, opens a
   browser when it can, and the customer allows the device in the portal. The
-  browser can be on ANOTHER machine, so the sign in works over SSH.
-- **A machine or an agent** carries an API key in the environment:
+  browser can be on ANOTHER machine, so the sign in works over SSH. An agent
+  runs this command and asks the user to allow the device: open the browser
+  for the user, or give the user the printed address and code when no
+  browser opens on their machine. The command waits for the device and signs
+  itself in.
+- **A caller with no human to click** carries an API key in the environment:
   `PARAZUN_API_KEY=<key>`. No sign in, no browser, no token.
 
 The API key of a customer is on the page of the API keys of the portal:
