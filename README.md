@@ -12,6 +12,31 @@ parazun search "coffee grinder"
 parazun product reviews B00FLYWNYQ --sort-by recent
 ```
 
+## For an AI agent
+
+Copy this prompt into an agent. The agent needs no other context.
+
+```
+Install the Parazun CLI and its skill, then verify the setup.
+
+- Install the CLI: uv tool install git+https://github.com/arscera/parazun-cli.git
+  The command is `parazun` and it needs Python 3.10 or later. If your sandbox
+  cannot run a command outside the workspace, set UV_TOOL_DIR to a directory
+  you can write to and put its bin directory on the path.
+- Install the skill: git clone https://github.com/arscera/parazun-cli.git, then
+  copy `parazun-cli/skills/parazun-cli` into the skills directory of your
+  harness. If your harness has no skills directory, read the file
+  `parazun-cli/skills/parazun-cli/SKILL.md` into your context instead.
+  Follow the Quickstart of the SKILL.md.
+- Get a credential. An agent that runs unattended sets PARAZUN_API_KEY=<key>
+  in the environment; the key of a customer is on the page
+  https://portal.parazun.com/keys/. A person signs in with
+  `parazun auth login` and must allow the device in a browser, so an agent
+  cannot finish this step alone.
+- Verify: run `python3 <the path of the skill>/scripts/check_setup.py`, then
+  make one call: `parazun product B00FLYWNYQ`
+```
+
 ## Install
 
 ```
@@ -137,87 +162,6 @@ the one that the environment can name, with the value of `PARAZUN_REGION`.
   so the refresh belongs to the credential of the call.
 - The device grant issues no `id_token`. The API reads the token row, so
   the CLI needs none.
-
-## For an AI agent
-
-Two prompts follow. A person copies one of them and pastes it into an
-agent. The agent needs no other context. The text after the prompts names
-what the agent needs next.
-
-### Prompt 1: install the CLI
-
-```
-Install the Parazun CLI.
-
-- Run: uv tool install git+https://github.com/arscera/parazun-cli.git
-- The command is `parazun`. It needs Python 3.10 or later.
-- uv puts the command in ~/.local/bin on Linux and macOS. If your sandbox
-  cannot run a command outside the workspace, set UV_TOOL_DIR to a
-  directory you can write to and put its bin directory on the path.
-- Check the install: parazun --help
-```
-
-### Prompt 2: install the skill
-
-```
-Install the skill of the Parazun CLI.
-
-- Clone the repository:
-  git clone https://github.com/arscera/parazun-cli.git
-- Copy the skill directory into the skills directory of your harness:
-  cp -r parazun-cli/skills/parazun-cli <skills directory>/parazun-cli
-- The skill directory holds SKILL.md, references/ and scripts/. A harness
-  that reads the open Agent Skills format expects one directory per skill,
-  and that directory holds the SKILL.md of the skill. Claude Code reads
-  .claude/skills/ in the project and ~/.claude/skills/ for the account.
-- If your harness has no skills directory, read the file
-  parazun-cli/skills/parazun-cli/SKILL.md into your context instead.
-- Read the SKILL.md and follow its Quickstart.
-```
-
-### The credential of the agent
-
-The CLI needs a credential before it makes a call.
-
-- **An agent that runs unattended** carries an API key in the environment:
-  `PARAZUN_API_KEY=<key>`. The key of a customer is on the page of the API
-  keys of the portal: `https://portal.parazun.com/keys/`. No sign in and no
-  browser are needed.
-- **A person at a terminal** signs in with `parazun auth login`. The portal
-  asks a human to allow the device, so a person must be there. An agent
-  cannot finish this step alone.
-
-### The check of the setup
-
-The skill carries a script that checks the install, the credential and one
-live call. Run the script where the skill lives:
-
-```
-python3 <the path of the skill>/scripts/check_setup.py
-```
-
-The script finds the command on the path. When the skill sits inside a
-clone of the repository, the script also finds the virtual environment of
-the clone. Set `PARAZUN_CLI` to the path of the command when neither
-route finds it.
-
-The script prints one line per check and a verdict at the end. It never
-prints a secret. A check that reads `NEED` did not run because a
-credential is missing, and it is not a failure.
-
-### The first call
-
-```
-parazun product B00FLYWNYQ
-parazun search "coffee grinder"
-```
-
-The body of the answer of the API goes to stdout and nothing else does, so
-a pipe reads JSON:
-
-```
-parazun product B00FLYWNYQ | jq -r .title
-```
 
 ## License
 
