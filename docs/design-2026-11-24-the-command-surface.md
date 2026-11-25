@@ -153,7 +153,7 @@ CLI holds no copy of any of them.
 | The channel | The content |
 | --- | --- |
 | stdout | the body of the API, exactly as the API answered it |
-| stderr | one line: the status and the rate limit headers the API sent |
+| stderr | one line: the status and the capacity headers the API sent |
 | the exit code | 0 when the API answered 2xx, 1 for every other answer |
 
 **THE BODY GOES TO STDOUT AND NOTHING ELSE DOES.** The CLI exists for the
@@ -180,12 +180,26 @@ would change what the CLI does, so the CLI holds no copy of any default,
 and the help of an option points at the default of the API instead of
 naming its value.
 
-**THE STATUS LINE IS ONE LINE.** It names the status and every rate limit
-header the answer carried:
+**THE STATUS LINE IS ONE LINE.** It names the status and every header that
+carries the capacity of the customer: the rate limit, the allowance and
+the credit balance, plus the `Retry-After` of a refusal of the rate limit.
 
 ```
-HTTP 200 | x-ratelimit-limit=20 x-ratelimit-remaining=19 x-ratelimit-reset=60
+HTTP 200 | x-credit-balance=0 x-quota-limit=300 x-quota-remaining=299 x-quota-reset=3600 x-ratelimit-limit=20 x-ratelimit-remaining=19 x-ratelimit-reset=60
 ```
+
+**THE CLIENT KEEPS THE FAMILIES OF THE CAPACITY HEADERS, NOT A LIST OF
+THE NAMES.** The API sends those headers so a client can read what it can
+still send without provoking a refusal, and the client keeps every header
+of the families `x-ratelimit-`, `x-quota-` and `x-credit` plus the
+`Retry-After`. A copy of the list of the names is a second copy of a
+value the API owns, and the copy drifts: it named a credit balance the API
+does not send and named no allowance header at all, so the allowance and
+the credit balance never reached the caller.
+
+**THE STATUS LINE NAMES WHAT THE ANSWER CARRIED, AND NOTHING ELSE.** A
+header of a family the client does not know is not shown, so a new header
+of the API appears when the API sends it.
 
 **A REFUSAL GOES TO STDERR AND THE EXIT CODE IS 1.** The body of a refusal
 is the JSON of the API, and it names the cause, so it is printed on stderr
@@ -202,6 +216,19 @@ data. A caller that wants a summary pipes the answer into `jq`.
 not change. The device grant works, the credentials live in
 `~/.config/parazun/credentials.json` with the mode 0600, and the token is
 refreshed on its own.
+
+**THE KEY OF THE ENVIRONMENT WINS OVER THE TOKEN OF THE SIGN IN.** The key
+is the credential the caller gave for THIS call, and the token is the state
+of a machine, which may hold the account of another customer. A machine
+caller that sets a key is metered against the account of the key and not
+against the account of a session it never asked for, so the key is the
+credential of the call.
+
+**THE REFRESH BELONGS TO THE CREDENTIAL OF THE CALL.** A client that sends
+the key does not refresh a token it does not send, and a key that the API
+refuses is refused once and not retried with a refreshed token. A client
+that sends the token refreshes it when it is past its hour and once more
+when the API answers 401.
 
 **THE MESSAGES NAME THE CAUSE (2026-11-24, F78).** The portal can revoke
 a device, and the refresh token of that device is dead from that moment.

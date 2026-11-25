@@ -127,7 +127,8 @@ a test and a real run never share the file.
 
 The access token lives one hour. The CLI refreshes it on its own, before a
 request that would use an expired token and once more when the API refuses
-a token with 401. **The refresh token rotates on every refresh**, so the
+a token with 401. **A client that sends the API key does not refresh the
+token**, because it does not send it. **The refresh token rotates on every refresh**, so the
 file is written again each time.
 
 `parazun auth status` prints the state of the sign in of the machine and
@@ -196,7 +197,7 @@ One contract for every command that calls the API.
 | The channel | The content |
 | --- | --- |
 | stdout | the body of the API, exactly as the API answered it |
-| stderr | one line: the status and the rate limit of the answer |
+| stderr | one line: the status and the capacity of the customer |
 | the exit code | 0 when the API answered 2xx, 1 for every other answer |
 
 **The body goes to stdout and nothing else does.** A body with a header
@@ -217,11 +218,13 @@ name-resolution error that says nothing about the path. **In this checkout
 a command string that carries a leading slash is refused by the exec
 guard**, so call the escape hatch from a script.
 
-**2. The token of the sign in wins over the API key of the environment.**
-With both, the client sends the bearer token, not the key. The README of
-the repository says the opposite; the code and the tests of the code send
-the token. To force the key, point `PARAZUN_CONFIG_DIR` at an empty
-directory or delete the credentials file.
+**2. The API key of the environment wins over the token of the sign in.**
+The key is the credential the caller gave for this call, and the token is
+the state of the machine, which may hold the account of another customer.
+A machine caller that sets a key is metered against the account of the
+key, never against the account of a session it never asked for. A client
+that sends the key does not refresh the token either. To use the token of
+the sign in, remove the key from the environment.
 
 **3. `PARAZUN_API_URL` is ignored on a signed-in machine.** The base address
 of a signed-in client comes from the credentials file, not from the
@@ -240,11 +243,13 @@ the enumeration `["1","0"]`, so the option takes `1` or `0`. A flag sends
 of a category has no marketplace, and the API ignores or refuses a
 marketplace it does not have.
 
-**7. The status line carries only the rate-limit headers.** The API also
-sends `X-Quota-Limit`, `X-Quota-Remaining`, `X-Quota-Reset` and
-`X-Credit-Balance`, and the CLI keeps only the `X-RateLimit-*` names. The
-quota and the credit balance therefore do not appear in the status line.
-Read them from the raw answer when a plan has to be measured.
+**7. The status line carries the capacity of the customer.** The API sends
+`X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`,
+`X-Quota-Limit`, `X-Quota-Remaining`, `X-Quota-Reset` and
+`X-Credit-Balance` on every admitted answer, and `Retry-After` on a
+refusal of the rate limit, and the CLI keeps every header of those
+families. Read the allowance and the credit balance from the status line
+when a plan has to be measured.
 
 **8. A retired path and a deprecated path have no command.** The retired
 ones are the `most-gifted` and `most-wished-for` paths and

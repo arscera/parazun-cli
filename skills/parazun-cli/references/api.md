@@ -37,6 +37,12 @@ A bare key without the prefix is refused with 401.
   CLI refreshes it on its own, and the refresh token rotates on every
   refresh.
 
+**THE KEY OF THE ENVIRONMENT WINS OVER THE TOKEN OF THE SIGN IN.** The key
+is the credential the caller gave for this call, and the token is the state
+of the machine, which may hold the account of another customer. A machine
+caller that sets a key is metered against the account of the key, and a
+client that sends the key does not refresh the token.
+
 **The quota, the rate limit and the credits of a bearer token come from the
 USER**, so a token of a customer enters the same admission as the key of
 the same customer. There is no change of entitlement.
@@ -83,9 +89,11 @@ The combined capacity is the remaining allowance plus the credits that are
 left, so a client never has to provoke a refusal to learn what it can
 still send.
 
-**The status line of the CLI carries only the `X-RateLimit-*` names.** The
-quota and the credit balance are not in it, so read them from the raw
-answer when a plan has to be measured.
+**The status line of the CLI carries every header of those families.** The
+client keeps the families `x-ratelimit-`, `x-quota-` and `x-credit` plus
+the `Retry-After`, so the rate limit, the allowance and the credit balance
+are all in the status line, and a header the API adds later reaches it
+without a change in the client.
 
 ## The plans and the limits
 

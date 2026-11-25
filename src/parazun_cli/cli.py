@@ -115,7 +115,12 @@ def _query(region=None, **values):
 
 
 def _status_line(answer):
-    """One line that names the status and the rate limit of the answer."""
+    """One line that names the status and the capacity of the customer.
+
+    The capacity is the rate limit, the allowance and the credit balance
+    that the answer carried, so a caller can read what it can still send
+    without provoking a refusal.
+    """
     line = "HTTP %d |" % answer.status_code
     for name in sorted(answer.headers):
         line += " %s=%s" % (name, answer.headers[name])
@@ -148,8 +153,11 @@ def _fail(message):
 def _api_client():
     """The client of the customer of this machine.
 
-    The token of the sign in is the credential, and the API key of the
-    environment is honoured as well, so a machine caller needs no browser.
+    The key of the environment is the credential of a machine caller and the
+    token of the sign in is the credential of a person, and the key wins:
+    the caller gave the key for this call, and the token is the state of
+    the machine, which may hold the account of another customer. A machine
+    caller that sets a key must not be metered against that account.
     """
     credentials = config.load()
     key = config.api_key()

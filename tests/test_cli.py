@@ -238,6 +238,132 @@ def test_the_client_sends_the_api_key_when_there_is_no_token(monkeypatch):
     assert seen["authorization"] == "Api-Key the-api-key"
 
 
+def test_the_key_of_the_environment_wins_over_the_token_of_the_sign_in(monkeypatch):
+    """The credential the caller gave is the credential of the call.
+
+    The token of the sign in is the state of the machine, and it may hold
+    the account of another customer, so a machine caller that sets a key
+    must not be metered against that account.
+    """
+    seen = {}
+
+    def handler(request):
+        seen["authorization"] = request.headers.get("authorization")
+        return httpx.Response(200, json={"ok": True})
+
+    _fake_transport(monkeypatch, handler)
+    api = client.ApiClient(credentials=_credentials(), key="the-api-key")
+    api.request("GET", "/product/")
+    assert seen["authorization"] == "Api-Key the-api-key"
+
+
+def test_the_key_of_the_environment_does_not_refresh_the_token(monkeypatch):
+    """A client that sends the key does not touch the token of the machine."""
+    asked = []
+
+    def handler(request):
+        asked.append(request.url.path)
+        return httpx.Response(200, json={"ok": True})
+
+    config.store(_credentials(expires_at=config.expiry(-60)))
+    _fake_transport(monkeypatch, handler)
+    api = client.ApiClient(credentials=config.load(), key="the-api-key")
+    api.request("GET", "/product/")
+
+    # The token endpoint was never asked, so the rotated refresh token of
+    # the machine was never written.
+    assert not [path for path in asked if path.endswith("/identity/o/api/token")]
+    assert config.load().refresh_token == "the-refresh-token"
+
+
+def test_a_refused_key_is_not_retried_with_a_refreshed_token(monkeypatch):
+    """A key that the API refuses is refused, and no token is refreshed."""
+    asked = []
+
+    def handler(request):
+        asked.append(request.url.path)
+        if request.url.path.endswith("/identity/o/api/token"):
+            return httpx.Response(
+                200,
+                json={
+                    "access_token": "the-new-access-token",
+                    "refresh_token": "the-new-refresh-token",
+                    "expires_in": 3600,
+                },
+            )
+        return httpx.Response(401, json={"error": "Invalid API Key"})
+
+    config.store(_credentials())
+    _fake_transport(monkeypatch, handler)
+    api = client.ApiClient(credentials=config.load(), key="the-api-key")
+    answer = api.request("GET", "/product/")
+
+    assert answer.status_code == 401
+    assert asked == ["/product/"]
+
+
+def test_the_status_line_names_the_capacity_of_the_customer(monkeypatch):
+    """The status line carries the allowance and the credit balance.
+
+    The API sends them on every admitted answer so a client can read what
+    it can still send without provoking a refusal.
+    """
+    seen = {}
+
+    def handler(request):
+        return httpx.Response(
+            200,
+            content=b'{"ok": true}',
+            headers={
+                "content-type": "application/json",
+                "x-ratelimit-limit": "20",
+                "x-ratelimit-remaining": "19",
+                "x-ratelimit-reset": "60",
+                "x-quota-limit": "300",
+                "x-quota-remaining": "299",
+                "x-quota-reset": "3600",
+                "x-credit-balance": "4",
+                "x-answer-of-a-family-the-client-does-not-know": "1",
+            },
+        )
+
+    _fake_transport(monkeypatch, handler)
+    api = client.ApiClient(key="the-api-key")
+    answer = api.request("GET", "/product/")
+    line = cli._status_line(answer)
+
+    assert "x-ratelimit-limit=20" in line
+    assert "x-quota-limit=300" in line
+    assert "x-quota-remaining=299" in line
+    assert "x-credit-balance=4" in line
+    assert "x-answer-of-a-family-the-client-does-not-know" not in line
+
+
+def test_the_status_line_carries_the_retry_after_of_a_refusal(monkeypatch):
+    """A refusal of the rate limit says when to come back."""
+
+    def handler(request):
+        return httpx.Response(
+            429,
+            content=b'{"error": "Rate limit exceeded"}',
+            headers={
+                "content-type": "application/json",
+                "x-ratelimit-limit": "20",
+                "x-ratelimit-remaining": "0",
+                "x-ratelimit-reset": "60",
+                "retry-after": "60",
+            },
+        )
+
+    _fake_transport(monkeypatch, handler)
+    api = client.ApiClient(key="the-api-key")
+    answer = api.request("GET", "/product/")
+    line = cli._status_line(answer)
+
+    assert "retry-after=60" in line
+    assert "x-ratelimit-reset=60" in line
+
+
 def test_the_client_refreshes_a_refused_token(monkeypatch):
     """A token that the API refuses is refreshed once, and the new one is kept."""
     seen = []

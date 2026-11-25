@@ -5,9 +5,17 @@ access token of the same customer. The CLI uses the token that the device
 grant issued, and the API key of the environment is honoured as well, so a
 machine caller needs no browser.
 
+**THE KEY OF THE ENVIRONMENT WINS OVER THE TOKEN OF THE SIGN IN.** The key
+is the credential the caller gave for THIS call, and the token is the state
+of a machine, which may hold the account of another customer. A machine
+caller that sets a key must not be metered against the account of a
+session it never asked for.
+
 The client refreshes the token when it is past its hour, and it refreshes
 it again when the API answers 401. The second refresh covers a token that
-was revoked and a machine whose clock is wrong.
+was revoked and a machine whose clock is wrong. **A CLIENT THAT SENDS THE
+KEY DOES NOT REFRESH A TOKEN IT DOES NOT SEND**, so the refresh belongs to
+the credential of the call.
 """
 
 from dataclasses import dataclass
@@ -22,13 +30,22 @@ from . import config, oauth
 KEY_HEADER = "Api-Key"
 TOKEN_HEADER = "Bearer"
 
-# The headers of the answer that carry the state of the plan.
-REPORT_HEADERS = (
-    "x-ratelimit-limit",
-    "x-ratelimit-remaining",
-    "x-ratelimit-reset",
-    "x-credits-balance",
-)
+# The families of the headers that name the capacity of the customer. The
+# API sends a rate limit, an allowance and a credit balance on every
+# admitted answer, and a Retry-After on a refusal of the rate limit.
+#
+# The client keeps every header of those families, so a header the API adds
+# later reaches the status line without a change here. A copy of the list of
+# the names would drift, and it has already drifted: the list named a credit
+# balance the API does not send and named no allowance header at all.
+CAPACITY_HEADER_PREFIXES = ("x-ratelimit-", "x-quota-", "x-credit")
+CAPACITY_HEADER_NAMES = ("retry-after",)
+
+
+def is_capacity_header(name: str) -> bool:
+    """True when the header names the capacity of the customer."""
+    name = name.lower()
+    return name in CAPACITY_HEADER_NAMES or name.startswith(CAPACITY_HEADER_PREFIXES)
 
 
 class ApiError(RuntimeError):
@@ -68,12 +85,26 @@ class ApiClient:
             return self.credentials.api_url.rstrip("/")
         return config.api_url()
 
+    def _uses_token(self) -> bool:
+        """True when the token of the sign in is the credential of this client.
+
+        The key of the environment wins over the token, so a client that
+        carries a key sends the key and does not touch the token.
+        """
+        return not self.key and self.credentials is not None
+
     def _header(self) -> tuple[str, str]:
-        """The header that carries the credential."""
-        if self.credentials is not None:
-            return TOKEN_HEADER, self.credentials.access_token
+        """The header that carries the credential.
+
+        The key of the environment wins over the token of the sign in. The
+        key is the credential the caller gave for THIS call, and the token
+        is the state of a machine, which may hold the account of another
+        customer.
+        """
         if self.key:
             return KEY_HEADER, self.key
+        if self.credentials is not None:
+            return TOKEN_HEADER, self.credentials.access_token
         raise ApiError(
             "there is no credential. Run `parazun auth login`, or set the "
             "PARAZUN_API_KEY value of the environment."
@@ -116,7 +147,7 @@ class ApiClient:
         reads JSON. A body that is text is sent as it is, with the header of
         JSON, so a caller can send a body that the CLI did not build.
         """
-        if self.credentials is not None and self.credentials.is_expired():
+        if self._uses_token() and self.credentials.is_expired():
             self._refresh()
 
         name, value = self._header()
@@ -141,7 +172,11 @@ class ApiClient:
                 **body,
             )
 
-            if response.status_code == 401 and self._refresh():
+            if (
+                response.status_code == 401
+                and self._uses_token()
+                and self._refresh()
+            ):
                 # The token was refused. A new one is tried once, so a
                 # revoked token does not send the caller in a circle.
                 name, value = self._header()
@@ -160,6 +195,6 @@ class ApiClient:
             headers={
                 name.lower(): value
                 for name, value in response.headers.items()
-                if name.lower() in REPORT_HEADERS
+                if is_capacity_header(name)
             },
         )

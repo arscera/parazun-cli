@@ -91,7 +91,10 @@ The CLI prints three things and they never mix:
 
 - **stdout** carries the body of the answer of the API, exactly as the API
   answered it. A pipe of stdout is the body of the API and nothing else.
-- **stderr** carries one line: the status and the rate limit of the answer.
+- **stderr** carries one line: the status and the capacity of the customer.
+  The capacity is the rate limit, the allowance and the credit balance that
+  the answer carried, so a caller reads what it can still send without
+  provoking a refusal.
 - **the exit code** is 0 when the API answered and 1 when it refused. A
   refusal puts the body of the refusal on stderr.
 
@@ -112,7 +115,10 @@ Instant Pot Duo 6 Qt 7-in-1 Electric Pressure Cooker, Stainless Steel
 | `PARAZUN_CONFIG_DIR` | The directory of the credentials file. | `~/.config/parazun` |
 
 The API key of the environment wins over the token of the sign in. A
-machine that carries a key needs no sign in.
+machine that carries a key needs no sign in, and a machine that carries a
+key is metered against the account of the key and not against the account
+of a session it never asked for. A machine that wants the token of the
+sign in removes the key from the environment.
 
 **THE CLI SENDS ONLY THE PARAMETERS THAT THE CALLER GAVE.** The default of
 a parameter lives in the API, so a parameter that the caller did not give
@@ -121,11 +127,14 @@ the one that the environment can name, with the value of `PARAZUN_REGION`.
 
 ## The rules of the client
 
-- The token is sent as `Authorization: Bearer <token>`.
+- The key is sent as `Authorization: Api-Key <key>` and the token as
+  `Authorization: Bearer <token>`.
 - The token endpoint wants a body of the form
   `application/x-www-form-urlencoded`.
 - The refresh token is rotated on every refresh, so the file is written
   again each time.
+- A client that sends the key does not refresh a token it does not send,
+  so the refresh belongs to the credential of the call.
 - The device grant issues no `id_token`. The API reads the token row, so
   the CLI needs none.
 
