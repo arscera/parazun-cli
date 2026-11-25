@@ -159,7 +159,7 @@ CLI holds no copy of any of them.
 **THE BODY GOES TO STDOUT AND NOTHING ELSE DOES.** The CLI exists for the
 agents of the customers, and an agent reads stdout. A body with a header
 line in front of it is not JSON, and a caller that pipes the answer into
-`jq` gets nothing. The status and the rate limit go to stderr, so a person
+`jq` gets nothing. The status and the capacity go to stderr, so a person
 sees them and a pipe does not.
 
 **AN ANSWER THAT IS NOT A 2xx IS A REFUSAL**, and its body goes to stderr
@@ -197,9 +197,10 @@ value the API owns, and the copy drifts: it named a credit balance the API
 does not send and named no allowance header at all, so the allowance and
 the credit balance never reached the caller.
 
-**THE STATUS LINE NAMES WHAT THE ANSWER CARRIED, AND NOTHING ELSE.** A
-header of a family the client does not know is not shown, so a new header
-of the API appears when the API sends it.
+**A NEW HEADER OF A KNOWN FAMILY APPEARS WITHOUT A CHANGE IN THE CLIENT.**
+A header of a family the client does not know is not shown, so the status
+line names the capacity the API and the client agree on, and nothing
+else.
 
 **A REFUSAL GOES TO STDERR AND THE EXIT CODE IS 1.** The body of a refusal
 is the JSON of the API, and it names the cause, so it is printed on stderr
@@ -243,7 +244,7 @@ because that page exists now.
 | The file | What it holds |
 | --- | --- |
 | `src/parazun_cli/cli.py` | the Typer app, the command groups, the commands, the output contract. It gains the message of the logout |
-| `src/parazun_cli/client.py` | the HTTP client, the credential, the refresh. It does not change |
+| `src/parazun_cli/client.py` | the HTTP client, the credential, the refresh. It gains the rule that orders the two credentials and the families of the capacity headers |
 | `src/parazun_cli/config.py` | the credential store and the values of the environment. It gains the region |
 | `src/parazun_cli/oauth.py` | the device grant. It gains the message of a revoked device |
 | `tests/test_cli.py` | the tests of the commands |
@@ -280,7 +281,10 @@ lives in one helper each.
 - **No cache.** The API caches what it can cache, and a cache in the CLI
   would answer with stale data.
 - **No command for a retired path.**
-- **No change to the client, the sign in or the credential store.**
+- **No change to the sign in commands or to the credential store.** The
+  client changes: the key of the environment wins over the token of the
+  sign in, the refresh belongs to the credential of the call, and the
+  status line names the capacity of the customer.
 - **No output format of the CLI's own.** The body of the API is the
   output. A summary would be a second shape of the same data, and it would
   have to be kept in step with the API.

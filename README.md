@@ -79,7 +79,7 @@ and the CLI asks for a new token.
 | `parazun seller <SELLER_ID>` | The profile of a seller. |
 | `parazun request <PATH>` | Any path of the API. The way to an operation that has no command yet. |
 | `parazun auth login` | Sign in with the device grant. |
-| `parazun auth status` | The state of the sign in of this machine. |
+| `parazun auth status` | The state of the sign in of this machine, and the credential its calls use. |
 | `parazun auth logout` | Revoke the token and delete the credentials. |
 
 `parazun --help` and `parazun <command> --help` name every option of every

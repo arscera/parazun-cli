@@ -731,3 +731,32 @@ def test_the_logout_names_the_page_of_the_portal(monkeypatch):
     result = runner.invoke(cli.app, ["auth", "logout"])
     assert result.exit_code == 1
     assert "https://portal.parazun.test/keys/" in result.stderr
+
+
+def test_the_status_names_the_credential_of_the_calls(monkeypatch):
+    """The status says which credential the calls of this machine use."""
+    config.store(_credentials())
+
+    monkeypatch.delenv("PARAZUN_API_KEY", raising=False)
+    result = runner.invoke(cli.app, ["auth", "status"])
+    assert result.exit_code == 0
+    assert "Calls use:  the token of the sign in" in result.stdout
+
+    monkeypatch.setenv("PARAZUN_API_KEY", "the-api-key")
+    result = runner.invoke(cli.app, ["auth", "status"])
+    assert result.exit_code == 0
+    assert "Calls use:  the API key of the environment" in result.stdout
+
+
+def test_the_status_says_the_truth_about_an_expired_token(monkeypatch):
+    """An expired token is refreshed by the calls that send it, and by no other."""
+    config.store(_credentials(expires_at=config.expiry(-60)))
+
+    monkeypatch.delenv("PARAZUN_API_KEY", raising=False)
+    result = runner.invoke(cli.app, ["auth", "status"])
+    assert "The next request refreshes it." in result.stdout
+
+    monkeypatch.setenv("PARAZUN_API_KEY", "the-api-key")
+    result = runner.invoke(cli.app, ["auth", "status"])
+    assert "it is not refreshed." in result.stdout
+    assert "The next request refreshes it." not in result.stdout

@@ -84,6 +84,7 @@ request was retired, and the body names the replacements.
 | `X-Quota-Remaining` | the allowance of the period that is left |
 | `X-Quota-Reset` | the seconds until the period starts again |
 | `X-Credit-Balance` | the credits that are left |
+| `Retry-After` | the seconds until the rate limit starts again, on a refusal of the rate limit |
 
 The combined capacity is the remaining allowance plus the credits that are
 left, so a client never has to provoke a refusal to learn what it can

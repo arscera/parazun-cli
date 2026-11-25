@@ -8,7 +8,7 @@ The output has three parts and they never mix:
 
 - the body of the answer of the API goes to stdout, so a caller can pipe
   it into a tool that reads JSON;
-- the status and the rate limit go to stderr, so a person sees them and a
+- the status and the capacity go to stderr, so a person sees them and a
   pipe does not;
 - the exit code is 0 when the API answered and 1 when it refused.
 
@@ -638,8 +638,18 @@ def status():
     typer.echo("API:        %s" % credentials.api_url)
     typer.echo("Portal:     %s" % credentials.portal_url)
     typer.echo("Expires at: %s" % credentials.expires_at)
+    if config.api_key():
+        typer.echo("Calls use:  the API key of the environment")
+    else:
+        typer.echo("Calls use:  the token of the sign in")
     if credentials.is_expired():
-        typer.echo("The token is past its hour. The next request refreshes it.")
+        if config.api_key():
+            typer.echo(
+                "The token is past its hour, and the calls do not send it, so "
+                "it is not refreshed."
+            )
+        else:
+            typer.echo("The token is past its hour. The next request refreshes it.")
     else:
         typer.echo("The token is alive.")
 

@@ -128,12 +128,12 @@ a test and a real run never share the file.
 The access token lives one hour. The CLI refreshes it on its own, before a
 request that would use an expired token and once more when the API refuses
 a token with 401. **A client that sends the API key does not refresh the
-token**, because it does not send it. **The refresh token rotates on every refresh**, so the
-file is written again each time.
+token**, because it does not send it. **The refresh token rotates on every
+refresh**, so the file is written again each time.
 
-`parazun auth status` prints the state of the sign in of the machine and
-names the file. `parazun auth logout` revokes the token at the portal and
-deletes the file.
+`parazun auth status` prints the state of the sign in of the machine, names
+the file, and names the credential the calls of that machine will use.
+`parazun auth logout` revokes the token at the portal and deletes the file.
 
 **A device can be signed out without the CLI.** The page of the API keys of
 the portal lists the devices that signed in to the account and revokes one
