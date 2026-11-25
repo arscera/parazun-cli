@@ -119,11 +119,26 @@ class ApiClient:
         if self.credentials is None or not self.credentials.refresh_token:
             return False
 
-        body = oauth.refresh_access_token(
-            self.credentials.portal_url,
-            self.credentials.client_id,
-            self.credentials.refresh_token,
-        )
+        try:
+            body = oauth.refresh_access_token(
+                self.credentials.portal_url,
+                self.credentials.client_id,
+                self.credentials.refresh_token,
+            )
+        except oauth.OAuthError as error:
+            if error.error != oauth.INVALID_GRANT:
+                raise
+            # The refresh token is dead, so the file of the credentials is
+            # dead too. A file that holds a secret that cannot be used
+            # misleads every later call, so the file is deleted and the
+            # caller is told to sign in again.
+            config.remove()
+            raise oauth.OAuthError(
+                "%s The file of the credentials is deleted, because the sign "
+                "in of this device is over." % error,
+                error=error.error,
+                description=error.description,
+            ) from error
         expires_at = config.expiry(body.get("expires_in", 3600))
         self.credentials.access_token = body["access_token"]
         self.credentials.refresh_token = body.get(

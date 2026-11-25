@@ -145,6 +145,13 @@ of them. The CLI says so when the portal revoked a device and the refresh
 answers `invalid_grant`: the sign in of that device is over, and
 `parazun auth login` signs it in again.
 
+**The sign in of a device ends after 60 days of no use.** The refresh token
+of the portal expires after 60 days of inactivity, and the window slides:
+the token rotates on every refresh, so a machine that calls the API keeps
+its sign in for ever, and a machine that stops calling for 60 days finds
+its refresh token dead. The CLI says so, deletes the file of the
+credentials, and asks for `parazun auth login` again.
+
 ### The values of the environment
 
 | Name | What it is | Default |

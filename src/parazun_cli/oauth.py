@@ -189,8 +189,9 @@ def refresh_access_token(
     carries a new one and the caller must write it down.
 
     A refusal with the code `invalid_grant` means the refresh token is
-    dead. The portal signs a device out, and the customer can sign the
-    device in again, so the message says what happened and what to do.
+    dead. The portal signs a device out, the customer can sign the device
+    in again, and the sign in of a device that was idle for too long
+    expires, so the message says what happened and what to do.
     """
     try:
         with httpx.Client(timeout=timeout) as client:
@@ -208,7 +209,8 @@ def refresh_access_token(
             raise
         raise OAuthError(
             "the sign-in of this device is over. The portal signed the "
-            "device out, or the refresh token was rotated somewhere else. "
+            "device out, the refresh token was rotated somewhere else, or "
+            "the device was idle for too long and the sign in expired. "
             "Run `parazun auth login` to sign in again.",
             error=error.error,
             description=error.description,

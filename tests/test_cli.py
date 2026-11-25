@@ -720,6 +720,40 @@ def test_the_command_of_a_revoked_device_says_what_to_do(monkeypatch):
     assert "parazun auth login" in result.stderr
 
 
+def test_the_message_of_a_dead_sign_in_names_the_idle_window(monkeypatch):
+    """A sign in that died of inactivity names that cause."""
+    deadline = 60 * 24 * 3600
+
+    def handler(request):
+        return httpx.Response(400, json={"error": "invalid_grant"})
+
+    _fake_transport(monkeypatch, handler)
+    with pytest.raises(oauth.OAuthError) as failure:
+        oauth.refresh_access_token(
+            "https://portal.parazun.test", "parazun-cli", "the-refresh-token"
+        )
+    assert "idle for too long" in str(failure.value)
+    assert "parazun auth login" in str(failure.value)
+    assert deadline > 0
+
+
+def test_the_dead_sign_in_deletes_the_file_of_the_credentials(monkeypatch):
+    """A file that holds a secret that cannot be used is deleted."""
+    path = config.store(_credentials(expires_at=config.expiry(-60)))
+
+    def handler(request):
+        if request.url.path.endswith("/identity/o/api/token"):
+            return httpx.Response(400, json={"error": "invalid_grant"})
+        return httpx.Response(200, json={"ok": True})
+
+    _fake_transport(monkeypatch, handler)
+    result = runner.invoke(cli.app, ["product", "B00FLYWNYQ"])
+    assert result.exit_code == 1
+    assert not os.path.exists(path)
+    assert "The file of the credentials is deleted" in result.stderr
+    assert "parazun auth login" in result.stderr
+
+
 def test_the_logout_names_the_page_of_the_portal(monkeypatch):
     """A token that lives on can be revoked on the page of the portal."""
     config.store(_credentials())

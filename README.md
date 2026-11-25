@@ -69,6 +69,9 @@ The credentials are stored in `~/.config/parazun/credentials.json`. The
 file is readable by the owner alone. The access token lives one hour, and
 the CLI refreshes it on its own, so the customer stays signed in.
 
+The sign in of a machine ends after 60 days of no use. The window slides
+on every call, so a machine that calls the API keeps its sign in for ever.
+
 ## Sign out
 
 ```
