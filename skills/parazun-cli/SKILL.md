@@ -28,7 +28,7 @@ Three routes. Pick one.
 
 | Route | Command | When |
 | --- | --- | --- |
-| the repository | `uv tool install git+https://github.com/arscera/parazun-cli.git` | a machine that runs the agent |
+| the repository | `uv tool install git+https://github.com/arscera/parazun-cli.git` | a machine that runs the agent. The binary lands in the tool directory of the user |
 | a clone | `uv tool install .` from the root of a clone | a customer with the source |
 | the published repository | `uv tool install git+https://github.com/arscera/parazun-cli.git` | only after the owner makes the repository public |
 
@@ -37,7 +37,9 @@ The command is `parazun`. It needs Python 3.10 or later.
 **In this checkout, use the virtual environment of the repository**:
 `./.venv/bin/parazun`. The `uv tool install` route puts the
 binary in the tool directory of the user, which is outside the checkout,
-and a command that names a path outside the checkout is refused.
+and a command that names a path outside the checkout is refused. Set
+`UV_TOOL_DIR` to a directory inside the checkout when the route has to be
+used here.
 
 ### 2. Sign in
 

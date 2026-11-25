@@ -143,12 +143,18 @@ def print_surface(spec, only=None, as_json=False):
     for server in spec.get("servers") or []:
         print("The server: %s" % server.get("url", "?"))
     for name, scheme in (spec.get("components", {}).get("securitySchemes") or {}).items():
-        pieces = [name, "%s in the header %s" % (scheme.get("type", "?"), scheme.get("name", "?"))]
-        if scheme.get("scheme"):
-            pieces.append(scheme["scheme"])
-        if scheme.get("bearerFormat"):
-            pieces.append(scheme["bearerFormat"])
-        print("The credential: %s" % " ".join(pieces))
+        kind = scheme.get("type", "?")
+        if kind == "apiKey":
+            text = "%s, apiKey in the header %s" % (name, scheme.get("name", "?"))
+        else:
+            text = "%s, %s scheme" % (name, kind)
+            if scheme.get("scheme"):
+                text += " %s" % scheme["scheme"]
+            if scheme.get("bearerFormat"):
+                text += " %s" % scheme["bearerFormat"]
+            if scheme.get("name"):
+                text += " in the header %s" % scheme["name"]
+        print("The credential: %s" % text)
     print("")
     for title, group in (("LIVE", live), ("RETIRED OR DEPRECATED", retired)):
         if not group:
