@@ -24,7 +24,7 @@ Read it with the script of this skill instead of trusting a copy of it:
 
 ### 1. Install the CLI
 
-One route, when the repository is public:
+One route, from the public repository:
 
 ```
 uv tool install git+https://github.com/arscera/parazun-cli.git
