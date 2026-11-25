@@ -24,22 +24,23 @@ Read it with the script of this skill instead of trusting a copy of it:
 
 ### 1. Install the CLI
 
-Three routes. Pick one.
+One route, when the repository is public:
 
-| Route | Command | When |
-| --- | --- | --- |
-| the repository | `uv tool install git+https://github.com/arscera/parazun-cli.git` | a machine that runs the agent. The binary lands in the tool directory of the user |
-| a clone | `uv tool install .` from the root of a clone | a customer with the source |
-| the published repository | `uv tool install git+https://github.com/arscera/parazun-cli.git` | a customer, once the repository is public |
+```
+uv tool install git+https://github.com/arscera/parazun-cli.git
+```
+
+or, from a clone of this repository:
+
+```
+uv tool install .
+```
 
 The command is `parazun`. It needs Python 3.10 or later.
 
-**In this checkout, use the virtual environment of the repository**:
-`./.venv/bin/parazun`. The `uv tool install` route puts the
-binary in the tool directory of the user, which is outside the checkout,
-and a command that names a path outside the checkout is refused. Set
-`UV_TOOL_DIR` to a directory inside the checkout when the route has to be
-used here.
+**IF THE BINARY LANDS WHERE THE AGENT CANNOT RUN IT**, set `UV_TOOL_DIR`
+to a directory the agent can write to, and put the `bin` directory of that
+tool on the path. A sandbox often refuses a path that is outside it.
 
 ### 2. Sign in
 
@@ -74,7 +75,7 @@ parazun product B00FLYWNYQ | jq -r .title
 
 `scripts/check_setup.py` of this skill checks the install, the credential
 and one live call, and prints one line per check. Run it from the root of
-the checkout.
+the repository.
 
 ### 5. Discover the ids the commands need
 
@@ -213,9 +214,9 @@ Each one of these was measured, not read.
 **1. The path of `parazun request` must start with a slash.** The client
 joins the base address and the path with no separator, so a path without a
 slash asks for the host `api.parazun.comproduct` and the failure is a
-name-resolution error that says nothing about the path. **In this checkout
-a command string that carries a leading slash is refused by the exec
-guard**, so call the escape hatch from a script.
+name-resolution error that says nothing about the path. **A SANDBOX MAY
+REFUSE A COMMAND THAT NAMES AN ABSOLUTE PATH**, so call the escape hatch
+from a script when the shell refuses the command.
 
 **2. The API key of the environment wins over the token of the sign in.**
 The key is the credential the caller gave for this call, and the token is

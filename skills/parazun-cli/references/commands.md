@@ -117,6 +117,5 @@ does not exist.
 `--param` takes `name=value`, and it can be given more than once. `--method`
 is `GET` when it is not given. `--data` takes a body as JSON.
 
-In this checkout a command string that carries a leading slash is refused
-by a sandbox, so run the escape hatch from a script
-instead of from the shell.
+A sandbox may refuse a command that names an absolute path, so run the
+escape hatch from a script when the shell refuses the command.
